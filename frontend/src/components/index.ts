@@ -5,4 +5,5 @@ export { NavigationTabs } from './navigation-tabs'
 export { AssistantButton } from './assistant-button'
 export { RoutesSection } from './routes-section'
 export { HotelsSection } from './hotels-section'
+export { TransportSection } from './transport-section'
 

@@ -6,8 +6,9 @@ import { NavigationTabs } from '@/components/navigation-tabs'
 import { AssistantButton } from '@/components/assistant-button'
 import { RoutesSection } from '@/components/routes-section'
 import { HotelsSection } from '@/components/hotels-section'
+import { TransportSection } from '@/components/transport-section'
 
-type ActiveSection = 'routes' | 'hotels' | 'cars' | 'services' | 'favorites'
+type ActiveSection = 'routes' | 'hotels' | 'transport' | 'services' | 'favorites'
 
 export default function Home() {
   const [activeSection, setActiveSection] = useState<ActiveSection>('routes')
@@ -35,6 +36,8 @@ export default function Home() {
     switch (displaySection) {
       case 'hotels':
         return <HotelsSection />
+      case 'transport':
+        return <TransportSection />
       case 'routes':
       default:
         return <RoutesSection />

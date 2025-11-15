@@ -2,12 +2,12 @@
 
 import { RouteIcon, HotelIcon, CarIcon, ServicesIcon, HeartIcon } from '@/shared/icons'
 
-type ActiveSection = 'routes' | 'hotels' | 'cars' | 'services' | 'favorites'
+type ActiveSection = 'routes' | 'hotels' | 'transport' | 'services' | 'favorites'
 
 const tabs = [
   { id: 'routes' as ActiveSection, label: 'Маршруты', Icon: RouteIcon },
   { id: 'hotels' as ActiveSection, label: 'Гостиницы', Icon: HotelIcon },
-  { id: 'cars' as ActiveSection, label: 'Авто', Icon: CarIcon },
+  { id: 'transport' as ActiveSection, label: 'Транспорт', Icon: CarIcon },
   { id: 'services' as ActiveSection, label: 'Услуги', Icon: ServicesIcon },
   { id: 'favorites' as ActiveSection, label: 'Путешествуйте выгодно', Icon: HeartIcon },
 ]
