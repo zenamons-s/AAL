@@ -10,4 +10,5 @@ export interface ApiResponse<T> {
 export * from './hotel'
 export * from './transport'
 export * from './services'
+export * from './favorites'
 
