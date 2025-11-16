@@ -14,17 +14,26 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "baseUrl": "./src",
-    "paths": {
-      "@domain/*": ["domain/*"],
-      "@application/*": ["application/*"],
-      "@infrastructure/*": ["infrastructure/*"],
-      "@presentation/*": ["presentation/*"],
-      "@shared/*": ["shared/*"]
-    }
+    "allowSyntheticDefaultImports": true,
+    "allowImportingTsExtensions": false,
+    "types": ["node"],
+    "typeRoots": ["./node_modules/@types"],
+    "baseUrl": ".",
+    "paths": {}
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"],
+  "ts-node": {
+    "compilerOptions": {
+      "module": "commonjs",
+      "moduleResolution": "node",
+      "esModuleInterop": true,
+      "allowSyntheticDefaultImports": true,
+      "baseUrl": "."
+    },
+    "transpileOnly": false,
+    "files": true
+  }
 }
 
 

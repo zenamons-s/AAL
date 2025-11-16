@@ -1,7 +1,16 @@
 import { Client } from 'minio';
 import dotenv from 'dotenv';
+import path from 'path';
+import fs from 'fs';
 
-dotenv.config();
+// Load .env from project root (for Docker) or from backend directory (for local)
+const rootEnvPath = path.resolve(__dirname, '../../../.env');
+const localEnvPath = path.resolve(__dirname, '../.env');
+if (fs.existsSync(rootEnvPath)) {
+  dotenv.config({ path: rootEnvPath });
+} else {
+  dotenv.config({ path: localEnvPath });
+}
 
 const minioClient = new Client({
   endPoint: process.env.MINIO_ENDPOINT?.replace('http://', '').replace('https://', '').split(':')[0] || 'localhost',

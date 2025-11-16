@@ -177,10 +177,83 @@ export class CacheKeyBuilder {
     userPattern: (userId: string) =>
       `${this.PREFIX}:sessions:${userId}:*`,
 
+  /**
+   * Паттерн для удаления всех сессий
+   */
+  pattern: () => `${this.PREFIX}:sessions:*`,
+  };
+
+  /**
+   * Ключи для OData API
+   */
+  static odata = {
     /**
-     * Паттерн для удаления всех сессий
+     * Кеш маршрутов
+     * @param routeId - ID маршрута (опционально)
      */
-    pattern: () => `${this.PREFIX}:sessions:*`,
+    routes: (routeId?: string) =>
+      routeId
+        ? `${this.PREFIX}:odata:routes:${routeId}`
+        : `${this.PREFIX}:odata:routes:all`,
+
+    /**
+     * Кеш остановок
+     * @param stopId - ID остановки (опционально)
+     */
+    stops: (stopId?: string) =>
+      stopId
+        ? `${this.PREFIX}:odata:stops:${stopId}`
+        : `${this.PREFIX}:odata:stops:all`,
+
+    /**
+     * Кеш расписания
+     * @param routeId - ID маршрута
+     * @param date - Дата (опционально)
+     */
+    schedule: (routeId: string, date?: string) =>
+      date
+        ? `${this.PREFIX}:odata:schedule:${routeId}:${date}`
+        : `${this.PREFIX}:odata:schedule:${routeId}`,
+
+    /**
+     * Кеш рейсов
+     * @param flightId - ID рейса (опционально)
+     * @param date - Дата (опционально)
+     */
+    flights: (flightId?: string, date?: string) =>
+      flightId
+        ? `${this.PREFIX}:odata:flights:${flightId}`
+        : date
+        ? `${this.PREFIX}:odata:flights:date:${date}`
+        : `${this.PREFIX}:odata:flights:all`,
+
+    /**
+     * Кеш тарифов
+     * @param tariffId - ID тарифа (опционально)
+     */
+    tariffs: (tariffId?: string) =>
+      tariffId
+        ? `${this.PREFIX}:odata:tariffs:${tariffId}`
+        : `${this.PREFIX}:odata:tariffs:all`,
+
+    /**
+     * Кеш занятости мест
+     * @param flightId - ID рейса
+     */
+    seatOccupancy: (flightId: string) =>
+      `${this.PREFIX}:odata:seat-occupancy:${flightId}`,
+
+    /**
+     * Кеш данных для ML
+     * @param routeId - ID маршрута
+     */
+    mlData: (routeId: string) =>
+      `${this.PREFIX}:odata:ml-data:${routeId}`,
+
+    /**
+     * Паттерн для удаления всех OData кешей
+     */
+    pattern: () => `${this.PREFIX}:odata:*`,
   };
 }
 
