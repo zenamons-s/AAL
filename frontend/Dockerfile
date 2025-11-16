@@ -1,101 +1,93 @@
-# Base stage - общий базовый образ
+# syntax=docker/dockerfile:1.4
+
+# ============================================================================
+# BASE - базовый образ
+# ============================================================================
 FROM node:18-alpine AS base
 
-# Установка системных зависимостей
-RUN apk add --no-cache libc6-compat curl wget
+RUN apk add --no-cache libc6-compat
 
-# Установка рабочей директории
 WORKDIR /app
 
-# Отключение telemetry
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Dependencies stage - установка всех зависимостей для разработки
+# ============================================================================
+# DEPS - установка зависимостей (кешируется при неизменных package.json)
+# ============================================================================
 FROM base AS deps
 
-# Копирование файлов зависимостей
+# Копируем ТОЛЬКО файлы зависимостей - это ключ к кэшированию
+# package-lock.json* с * означает что файл опционален
 COPY package.json package-lock.json* ./
 
-# Установка всех зависимостей (включая devDependencies)
-RUN if [ -f package-lock.json ]; then \
-      npm ci; \
+# Устанавливаем зависимости с BuildKit cache mount
+# npm ci работает только если есть package-lock.json, иначе используем npm install
+# npm cache сохраняется между сборками автоматически
+RUN --mount=type=cache,target=/root/.npm \
+    if [ -f package-lock.json ]; then \
+      npm ci --prefer-offline --no-audit; \
     else \
-      npm install; \
+      npm install --prefer-offline --no-audit --package-lock; \
     fi
 
-# Development stage - для разработки
-FROM base AS development
+# ============================================================================
+# BUILDER - сборка приложения
+# ============================================================================
+FROM base AS builder
 
-# Переменные окружения для разработки
-ENV NODE_ENV=development
-ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_ENV=production
 
-# Копирование node_modules из deps stage
+# Копируем зависимости из deps stage
 COPY --from=deps /app/node_modules ./node_modules
 
-# Копирование всех файлов проекта
+# Копируем исходный код ПОСЛЕ установки зависимостей
 COPY . .
 
-# Открытие порта
-EXPOSE 3000
+# Собираем приложение с кэшированием .next/cache
+RUN --mount=type=cache,target=/app/.next/cache \
+    npm run build
 
-# Переменные окружения для Next.js
+# ============================================================================
+# DEVELOPMENT - для разработки
+# ============================================================================
+FROM base AS development
+
+ENV NODE_ENV=development
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-# Запуск dev сервера
-CMD ["npm", "run", "dev"]
+# Копируем зависимости
+COPY --from=deps /app/node_modules ./node_modules
 
-# Builder stage - для production сборки
-FROM base AS builder
-
-# Переменные окружения для сборки
-ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
-
-# Копирование файлов зависимостей
-COPY package.json package-lock.json* ./
-
-# Установка всех зависимостей (включая devDependencies для сборки)
-RUN if [ -f package-lock.json ]; then \
-      npm ci; \
-    else \
-      npm install; \
-    fi
-
-# Копирование исходного кода
+# Копируем код (будет перезаписано volume в docker-compose)
 COPY . .
 
-# Сборка Next.js приложения
-RUN npm run build
+EXPOSE 3000
 
-# Runner stage - для production запуска
+CMD ["npm", "run", "dev"]
+
+# ============================================================================
+# PRODUCTION - минимальный production образ
+# ============================================================================
 FROM base AS runner
 
-# Переменные окружения для production
 ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
 
-# Создание системного пользователя
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
-# Копирование публичных файлов
-COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+# Копируем зависимости
+COPY --from=deps /app/node_modules ./node_modules
 
-# Копирование standalone build если существует, иначе полный build
+# Копируем собранное приложение
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-# Переключение на пользователя nextjs
 USER nextjs
 
-# Открытие порта
 EXPOSE 3000
 
-# Переменные окружения для Next.js
-ENV PORT=3000
-ENV HOSTNAME="0.0.0.0"
-
-# Запуск приложения
 CMD ["node", "server.js"]

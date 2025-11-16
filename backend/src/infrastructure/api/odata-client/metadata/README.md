@@ -103,5 +103,5 @@ const config: IODataClientConfig = {
 
 ## Примеры запросов
 
-См. `examples/odata-usage-examples.ts` для подробных примеров использования.
+См. документацию в `services/` для примеров использования сервисов.
 

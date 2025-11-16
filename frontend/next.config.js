@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: process.env.NODE_ENV === 'production' ? 'standalone' : undefined,
+  // Standalone output для оптимизации production образа
+  output: 'standalone',
   reactStrictMode: true,
   swcMinify: true,
   images: {

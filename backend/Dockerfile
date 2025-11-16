@@ -1,56 +1,78 @@
+# syntax=docker/dockerfile:1.4
+
+# ============================================================================
+# BASE - базовый образ
+# ============================================================================
 FROM node:18-alpine AS base
 
-# Install dependencies only when needed
-FROM base AS deps
 RUN apk add --no-cache libc6-compat curl wget
+
 WORKDIR /app
 
-# Copy package files
+# ============================================================================
+# DEPS - установка зависимостей (кешируется при неизменных package.json)
+# ============================================================================
+FROM base AS deps
+
+# Копируем ТОЛЬКО файлы зависимостей - это ключ к кэшированию
 COPY package.json package-lock.json* ./
-RUN npm ci || npm install
 
-# Build stage
+# Устанавливаем зависимости с BuildKit cache mount
+# npm cache сохраняется между сборками автоматически
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --prefer-offline --no-audit
+
+# ============================================================================
+# BUILDER - сборка TypeScript
+# ============================================================================
 FROM base AS builder
-WORKDIR /app
+
+ENV NODE_ENV=production
+
+# Копируем зависимости из deps stage
 COPY --from=deps /app/node_modules ./node_modules
-COPY . .
 
-# Generate Prisma client if using Prisma
-# RUN npx prisma generate
+# Копируем конфигурацию и исходный код ПОСЛЕ установки зависимостей
+COPY tsconfig.json package.json ./
+COPY src ./src
 
-# Development stage
+# Собираем TypeScript
+RUN npm run build
+
+# ============================================================================
+# DEVELOPMENT - для разработки
+# ============================================================================
 FROM base AS development
-WORKDIR /app
 
 ENV NODE_ENV=development
 
-RUN apk add --no-cache curl
-
+# Копируем зависимости
 COPY --from=deps /app/node_modules ./node_modules
+
+# Копируем код (будет перезаписано volume в docker-compose)
 COPY . .
 
-# Install nodemon for hot reload
+# Устанавливаем глобальные инструменты для разработки
 RUN npm install -g nodemon ts-node
 
 EXPOSE 5000
 
 CMD ["npm", "run", "dev"]
 
-# Production stage
+# ============================================================================
+# PRODUCTION - минимальный production образ
+# ============================================================================
 FROM base AS production
-WORKDIR /app
 
 ENV NODE_ENV=production
 
-RUN apk add --no-cache curl
-
+# Копируем зависимости
 COPY --from=deps /app/node_modules ./node_modules
-COPY . .
 
-# Build TypeScript
-RUN npm run build
+# Копируем собранные файлы
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/package.json ./
 
 EXPOSE 5000
 
 CMD ["npm", "start"]
-
