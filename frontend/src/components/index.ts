@@ -9,4 +9,6 @@ export { TransportSection } from './transport-section'
 export { ServicesSection } from './services-section'
 export { FavoritesSection } from './favorites-section'
 export { Footer } from './footer'
+export { CityAutocomplete } from './city-autocomplete'
+export { DatePicker } from './date-picker'
 

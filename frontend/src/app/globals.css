@@ -44,15 +44,13 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background-image: 
+    background-image:
       url('/background-image.png'),
-      repeating-linear-gradient(
-        45deg,
+      repeating-linear-gradient(45deg,
         transparent,
         transparent 20px,
         rgba(255, 255, 255, 0.08) 20px,
-        rgba(255, 255, 255, 0.08) 21px
-      );
+        rgba(255, 255, 255, 0.08) 21px);
     background-size: cover, 40px 40px;
     background-position: center center;
     background-blend-mode: overlay;
@@ -67,17 +65,16 @@
 }
 
 @layer components {
+
   /* Якутский орнамент - тонкий узорный бордер */
   .yakutia-border {
     @apply border border-yakutia-border-light;
-    background-image: 
-      repeating-linear-gradient(
-        45deg,
+    background-image:
+      repeating-linear-gradient(45deg,
         transparent,
         transparent 2px,
         rgba(26, 170, 194, 0.05) 2px,
-        rgba(26, 170, 194, 0.05) 4px
-      );
+        rgba(26, 170, 194, 0.05) 4px);
   }
 
   /* Плавные переходы */
@@ -103,8 +100,15 @@
 
   /* Анимация мигания */
   @keyframes yakutia-blink {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.7; }
+
+    0%,
+    100% {
+      opacity: 1;
+    }
+
+    50% {
+      opacity: 0.7;
+    }
   }
 
   .yakutia-blink {
@@ -113,9 +117,19 @@
 
   /* Анимация покачивания */
   @keyframes yakutia-sway {
-    0%, 100% { transform: rotate(0deg); }
-    25% { transform: rotate(-3deg); }
-    75% { transform: rotate(3deg); }
+
+    0%,
+    100% {
+      transform: rotate(0deg);
+    }
+
+    25% {
+      transform: rotate(-3deg);
+    }
+
+    75% {
+      transform: rotate(3deg);
+    }
   }
 
   .yakutia-sway {
@@ -124,8 +138,15 @@
 
   /* Анимация покачивания вверх-вниз */
   @keyframes yakutia-bounce {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-5px); }
+
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+
+    50% {
+      transform: translateY(-5px);
+    }
   }
 
   .yakutia-bounce {
@@ -134,15 +155,18 @@
 
   /* Анимация свечения */
   @keyframes yakutia-glow {
-    0%, 100% { 
+
+    0%,
+    100% {
       box-shadow: 0 0 10px rgba(19, 181, 201, 0.5),
-                  0 0 20px rgba(19, 181, 201, 0.3),
-                  0 0 30px rgba(19, 181, 201, 0.2);
+        0 0 20px rgba(19, 181, 201, 0.3),
+        0 0 30px rgba(19, 181, 201, 0.2);
     }
-    50% { 
+
+    50% {
       box-shadow: 0 0 20px rgba(19, 181, 201, 0.8),
-                  0 0 30px rgba(19, 181, 201, 0.5),
-                  0 0 40px rgba(19, 181, 201, 0.3);
+        0 0 30px rgba(19, 181, 201, 0.5),
+        0 0 40px rgba(19, 181, 201, 0.3);
     }
   }
 
@@ -160,6 +184,7 @@
     from {
       opacity: 0;
     }
+
     to {
       opacity: 1;
     }
@@ -174,6 +199,7 @@
     from {
       opacity: 1;
     }
+
     to {
       opacity: 0;
     }
@@ -182,5 +208,97 @@
   .fade-out {
     animation: fadeOut 0.4s ease-in-out;
   }
-}
 
+  /* Стили для select и input[type="number"] */
+  select {
+    background-color: var(--color-input-bg) !important;
+    color: var(--color-text-light) !important;
+    color-scheme: dark;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+  }
+
+  select:focus {
+    background-color: var(--color-input-bg) !important;
+    color: var(--color-text-light) !important;
+    outline: none;
+  }
+
+  select option {
+    background-color: var(--color-card-bg) !important;
+    background: var(--color-card-bg) !important;
+    color: var(--color-text-light) !important;
+    padding: 8px 12px !important;
+  }
+
+  select option:not(:checked):not(:hover):not(:focus) {
+    background-color: var(--color-card-bg) !important;
+    background: var(--color-card-bg) !important;
+    color: var(--color-text-light) !important;
+  }
+
+  select option:hover {
+    background-color: var(--color-primary) !important;
+    background: var(--color-primary) !important;
+    color: var(--color-text-light) !important;
+  }
+
+  select option:focus {
+    background-color: var(--color-primary) !important;
+    background: var(--color-primary) !important;
+    color: var(--color-text-light) !important;
+  }
+
+  select option:active {
+    background-color: var(--color-primary) !important;
+    background: var(--color-primary) !important;
+    color: var(--color-text-light) !important;
+  }
+
+  select option:checked,
+  select option[selected] {
+    background-color: var(--color-primary) !important;
+    background: var(--color-primary) !important;
+    color: var(--color-text-light) !important;
+  }
+
+  select:focus option:checked,
+  select:focus option[selected] {
+    background-color: var(--color-primary) !important;
+    background: var(--color-primary) !important;
+    color: var(--color-text-light) !important;
+  }
+
+  select:not([multiple]) option:checked {
+    background-color: var(--color-primary) !important;
+    background: var(--color-primary) !important;
+    color: var(--color-text-light) !important;
+  }
+
+  select:not([multiple]):not(:focus) {
+    color: var(--color-text-light) !important;
+  }
+
+  select::-ms-expand {
+    display: none;
+  }
+
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+    background: var(--color-input-bg) !important;
+    color: var(--color-text-light) !important;
+    opacity: 1;
+  }
+
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+
+  input[type="number"]::-webkit-inner-spin-button:hover,
+  input[type="number"]::-webkit-outer-spin-button:hover {
+    opacity: 0.8;
+  }
+}

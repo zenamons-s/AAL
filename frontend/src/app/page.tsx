@@ -27,12 +27,13 @@ export default function Home() {
   useEffect(() => {
     if (activeSection !== displaySection && mounted) {
       setIsTransitioning(true)
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         setDisplaySection(activeSection)
         setTimeout(() => {
           setIsTransitioning(false)
         }, 50)
       }, 400)
+      return () => clearTimeout(timer)
     }
   }, [activeSection, displaySection, mounted])
 

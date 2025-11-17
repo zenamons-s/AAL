@@ -13,6 +13,14 @@ export async function fetchApi<T>(
   });
 
   if (!response.ok) {
+    try {
+      const errorData = await response.json();
+      if (errorData.error && errorData.error.message) {
+        throw new Error(errorData.error.message);
+      }
+    } catch {
+      // Если не удалось распарсить JSON, используем стандартное сообщение
+    }
     throw new Error(`API Error: ${response.statusText}`);
   }
 

@@ -100,3 +100,4 @@ export function RoutePricing({ flights }: RoutePricingProps) {
   );
 }
 
+
