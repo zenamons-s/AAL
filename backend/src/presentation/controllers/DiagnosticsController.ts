@@ -226,6 +226,170 @@ export async function checkOData(req: Request, res: Response): Promise<void> {
 }
 
 /**
+ * Проверка адаптивной системы загрузки данных
+ */
+export async function checkAdaptiveDataLoading(req: Request, res: Response): Promise<void> {
+  try {
+    const isEnabled = process.env.USE_ADAPTIVE_DATA_LOADING === 'true';
+
+    if (!isEnabled) {
+      res.json({
+        status: 'disabled',
+        message: 'Adaptive data loading is disabled. Set USE_ADAPTIVE_DATA_LOADING=true to enable.',
+        enabled: false,
+      });
+      return;
+    }
+
+    const startTime = Date.now();
+    
+    // Получаем метрики
+    const { getMetricsRegistry } = await import('../../shared/metrics/MetricsRegistry');
+    const metricsRegistry = getMetricsRegistry();
+    const metricsSummary = metricsRegistry.getSummary();
+    
+    // Получаем статистику по каждому режиму
+    const { DataSourceMode } = await import('../../domain/enums/DataSourceMode');
+    const realModeStats = metricsRegistry.getModeStats(DataSourceMode.REAL);
+    const recoveryModeStats = metricsRegistry.getModeStats(DataSourceMode.RECOVERY);
+    const mockModeStats = metricsRegistry.getModeStats(DataSourceMode.MOCK);
+    
+    // Проверяем доступность через создание TransportDataService
+    const { createTransportDataService } = await import('../../application/data-loading');
+    const transportDataService = await createTransportDataService();
+    
+    // Получаем информацию о последней загрузке
+    const lastLoadInfo = await transportDataService.getLastLoadInfo();
+
+    // Проверяем кеш
+    const { DatasetCacheRepository, RedisConnection } = await import('../../infrastructure/cache');
+    
+    // Simple logger for cache repository
+    const logger = {
+      info: (msg: string, ctx?: any) => console.log(`[INFO] ${msg}`, ctx || ''),
+      warn: (msg: string, ctx?: any) => console.warn(`[WARN] ${msg}`, ctx || ''),
+      error: (msg: string, err?: any) => console.error(`[ERROR] ${msg}`, err || ''),
+      debug: (msg: string, ctx?: any) => console.debug(`[DEBUG] ${msg}`, ctx || ''),
+    };
+    
+    const redisConnection = RedisConnection.getInstance();
+    const redisClient = redisConnection.getClient();
+    const cacheRepo = new DatasetCacheRepository(
+      redisClient as any,
+      logger,
+      {
+        enabled: process.env.REDIS_ENABLED !== 'false',
+        ttl: parseInt(process.env.CACHE_TTL || '3600', 10),
+      }
+    );
+    
+    const [cacheAvailable, cachedDataset] = await Promise.all([
+      cacheRepo.isAvailable().catch(() => false),
+      cacheRepo.get().catch(() => null),
+    ]);
+
+    const responseTime = Date.now() - startTime;
+
+    res.json({
+      status: 'ok',
+      enabled: true,
+      
+      // Provider availability
+      providers: {
+        odata: {
+          name: 'OData Transport Provider',
+          available: !!lastLoadInfo && lastLoadInfo.mode === 'real',
+          configured: !!process.env.ODATA_BASE_URL,
+        },
+        mock: {
+          name: 'Mock Transport Provider',
+          available: true,
+        },
+      },
+      
+      // Cache status
+      cache: {
+        available: cacheAvailable,
+        hasData: !!cachedDataset,
+        dataMode: cachedDataset?.mode,
+        dataQuality: cachedDataset?.quality,
+        lastUpdated: cachedDataset?.loadedAt,
+        hitRate: `${metricsSummary.cache.hitRate}%`,
+        hits: metricsSummary.cache.hits,
+        misses: metricsSummary.cache.misses,
+      },
+      
+      // Last load information
+      lastLoad: lastLoadInfo ? {
+        mode: lastLoadInfo.mode,
+        quality: lastLoadInfo.quality,
+        source: lastLoadInfo.source,
+        loadedAt: lastLoadInfo.loadedAt,
+      } : null,
+      
+      // Performance metrics
+      metrics: {
+        requests: {
+          total: metricsSummary.requests.total,
+          last24h: metricsSummary.requests.last24h,
+          byMode: {
+            real: metricsSummary.requests.byMode.real,
+            recovery: metricsSummary.requests.byMode.recovery,
+            mock: metricsSummary.requests.byMode.mock,
+          },
+        },
+        quality: {
+          average: metricsSummary.quality.average,
+          last10: metricsSummary.quality.lastN,
+        },
+        performance: {
+          averageLoadTime_ms: metricsSummary.performance.averageLoadTime_ms,
+          p95LoadTime_ms: metricsSummary.performance.p95LoadTime_ms,
+        },
+        errors: {
+          total: metricsSummary.errors.total,
+          last24h: metricsSummary.errors.last24h,
+          bySource: metricsSummary.errors.bySource,
+        },
+      },
+      
+      // Mode-specific statistics
+      modeStats: {
+        real: {
+          count: realModeStats.count,
+          averageQuality: Math.round(realModeStats.averageQuality * 100) / 100,
+          averageLoadTime_ms: Math.round(realModeStats.averageLoadTime_ms),
+          lastSuccessful: realModeStats.lastSuccessful,
+        },
+        recovery: {
+          count: recoveryModeStats.count,
+          averageQuality: Math.round(recoveryModeStats.averageQuality * 100) / 100,
+          averageLoadTime_ms: Math.round(recoveryModeStats.averageLoadTime_ms),
+          lastSuccessful: recoveryModeStats.lastSuccessful,
+        },
+        mock: {
+          count: mockModeStats.count,
+          averageQuality: Math.round(mockModeStats.averageQuality * 100) / 100,
+          averageLoadTime_ms: Math.round(mockModeStats.averageLoadTime_ms),
+          lastSuccessful: mockModeStats.lastSuccessful,
+        },
+      },
+      
+      responseTime: `${responseTime}ms`,
+      lastUpdate: metricsSummary.lastUpdate,
+    });
+  } catch (error: any) {
+    res.status(503).json({
+      status: 'error',
+      error: {
+        code: error?.code || 'ADAPTIVE_LOADING_ERROR',
+        message: error?.message || 'Failed to check adaptive data loading status',
+      },
+    });
+  }
+}
+
+/**
  * Полная диагностика системы
  */
 interface IDiagnosticsResponse {

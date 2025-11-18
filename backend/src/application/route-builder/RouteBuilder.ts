@@ -30,14 +30,13 @@ export class RouteBuilder {
   ) {}
 
   /**
-   * Построить маршрут между двумя городами
+   * Построить маршрут между двумя городами (с предварительно построенным графом)
    */
-  async buildRoute(
+  async buildRouteFromGraph(
+    graph: RouteGraph,
     params: IRouteBuilderParams
   ): Promise<IRouteBuilderResult> {
     const { fromCity, toCity, date, passengers } = params;
-
-    const graph = await this.graphBuilder.buildGraph(date);
 
     const fromNodes = graph.findNodesByCity(fromCity);
     const toNodes = graph.findNodesByCity(toCity);
@@ -105,6 +104,17 @@ export class RouteBuilder {
       mlData,
       riskAssessment,
     };
+  }
+
+  /**
+   * Построить маршрут между двумя городами (legacy метод)
+   */
+  async buildRoute(
+    params: IRouteBuilderParams
+  ): Promise<IRouteBuilderResult> {
+    const { date } = params;
+    const graph = await this.graphBuilder.buildGraph(date);
+    return this.buildRouteFromGraph(graph, params);
   }
 
   /**

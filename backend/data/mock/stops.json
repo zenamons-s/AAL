@@ -1,0 +1,110 @@
+[
+  {
+    "id": "stop-001",
+    "name": "Аэропорт Якутск (Туймаада)",
+    "coordinates": {
+      "latitude": 62.0933,
+      "longitude": 129.7706
+    },
+    "type": "airport"
+  },
+  {
+    "id": "stop-002",
+    "name": "Аэропорт Москва Шереметьево",
+    "coordinates": {
+      "latitude": 55.9726,
+      "longitude": 37.4146
+    },
+    "type": "airport"
+  },
+  {
+    "id": "stop-003",
+    "name": "Аэропорт Иркутск",
+    "coordinates": {
+      "latitude": 52.2680,
+      "longitude": 104.3889
+    },
+    "type": "airport"
+  },
+  {
+    "id": "stop-004",
+    "name": "Остановка Беркакит",
+    "coordinates": {
+      "latitude": 56.8167,
+      "longitude": 121.6500
+    },
+    "type": "bus_stop"
+  },
+  {
+    "id": "stop-005",
+    "name": "Аэропорт Мирный",
+    "coordinates": {
+      "latitude": 62.5347,
+      "longitude": 114.0389
+    },
+    "type": "airport"
+  },
+  {
+    "id": "stop-006",
+    "name": "Вокзал Новосибирск-Главный",
+    "coordinates": {
+      "latitude": 55.0415,
+      "longitude": 82.9346
+    },
+    "type": "train_station"
+  },
+  {
+    "id": "stop-007",
+    "name": "Автостанция Хандыга",
+    "coordinates": {
+      "latitude": 62.6542,
+      "longitude": 135.5900
+    },
+    "type": "bus_station"
+  },
+  {
+    "id": "stop-008",
+    "name": "Вокзал Санкт-Петербург Московский",
+    "coordinates": {
+      "latitude": 59.9343,
+      "longitude": 30.3351
+    },
+    "type": "train_station"
+  },
+  {
+    "id": "stop-009",
+    "name": "Аэропорт Нерюнгри",
+    "coordinates": {
+      "latitude": 56.9139,
+      "longitude": 124.9142
+    },
+    "type": "airport"
+  },
+  {
+    "id": "stop-010",
+    "name": "Вокзал Красноярск-Пассажирский",
+    "coordinates": {
+      "latitude": 56.0089,
+      "longitude": 92.8537
+    },
+    "type": "train_station"
+  },
+  {
+    "id": "stop-011",
+    "name": "Автостанция Центральная Якутск",
+    "coordinates": {
+      "latitude": 62.0355,
+      "longitude": 129.6755
+    },
+    "type": "bus_station"
+  },
+  {
+    "id": "stop-012",
+    "name": "Вокзал Иркутск-Пассажирский",
+    "coordinates": {
+      "latitude": 52.2812,
+      "longitude": 104.2661
+    },
+    "type": "train_station"
+  }
+]

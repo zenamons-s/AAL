@@ -36,6 +36,18 @@ export interface IRouteBuilderResult {
   alternatives?: IBuiltRoute[];
   mlData?: IRouteMLData;
   riskAssessment?: IRiskAssessment;
+
+  /**
+   * Режим источника данных (опционально, только при USE_ADAPTIVE_DATA_LOADING=true)
+   * @see DataSourceMode для возможных значений
+   */
+  dataMode?: string;
+
+  /**
+   * Показатель качества транспортных данных (0-100)
+   * Опционально, только при USE_ADAPTIVE_DATA_LOADING=true
+   */
+  dataQuality?: number;
 }
 
 export interface IRouteMLData {

@@ -22,6 +22,7 @@ router.post('/routes/risk/assess', RiskController.assessRouteRisk);
 router.get('/diagnostics/database', DiagnosticsController.checkDatabase);
 router.get('/diagnostics/redis', DiagnosticsController.checkRedis);
 router.get('/diagnostics/odata', DiagnosticsController.checkOData);
+router.get('/diagnostics/adaptive-data', DiagnosticsController.checkAdaptiveDataLoading);
 router.get('/diagnostics', DiagnosticsController.fullDiagnostics);
 
 export default router;

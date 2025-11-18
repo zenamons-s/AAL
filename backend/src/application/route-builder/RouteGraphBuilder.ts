@@ -15,6 +15,7 @@ import {
   SeatOccupancyService,
 } from '../../infrastructure/api/odata-client';
 import { ODataClient } from '../../infrastructure/api/odata-client';
+import { ITransportDataset } from '../../domain/entities/TransportDataset';
 
 export class RouteGraphBuilder {
   constructor(
@@ -27,7 +28,85 @@ export class RouteGraphBuilder {
   ) {}
 
   /**
-   * Построить граф маршрутов
+   * Построить граф маршрутов из TransportDataset (новый метод для адаптивной загрузки)
+   * @param dataset - Датасет транспортных данных
+   * @param date - Дата для фильтрации рейсов
+   */
+  async buildFromDataset(dataset: ITransportDataset, date: string): Promise<RouteGraph> {
+    const graph = new RouteGraph();
+
+    // Добавление всех остановок как узлов графа
+    for (const stop of dataset.stops) {
+      // Преобразуем координаты из {latitude, longitude} в {lat, lng}
+      const coordinates = stop.coordinates
+        ? { lat: stop.coordinates.latitude, lng: stop.coordinates.longitude }
+        : undefined;
+      const stopName = stop.name;
+      const cityName = this.extractCityFromStop(stop.name, stop.metadata?.address);
+      
+      const node = new RouteNode(
+        stop.id,
+        stopName,
+        coordinates,
+        cityName
+      );
+      graph.addNode(node);
+    }
+
+    // Построение рёбер графа из маршрутов и рейсов
+    for (const route of dataset.routes) {
+      const transportType = this.detectTransportTypeFromDataset(route);
+      const routeFlights = dataset.flights.filter(f => f.routeId === route.id);
+
+      // Для каждой пары последовательных остановок создаём ребро
+      for (let i = 0; i < route.stops.length - 1; i++) {
+        const fromStopId = route.stops[i];
+        const toStopId = route.stops[i + 1];
+
+        // Создаём сегмент маршрута
+        const segment = new RouteSegment(
+          `${route.id}-${fromStopId}-${toStopId}`,
+          fromStopId,
+          toStopId,
+          route.id,
+          transportType,
+          undefined,
+          undefined, // Длительность будет определена из рейсов
+          undefined
+        );
+
+        // Получаем доступные рейсы для этого сегмента
+        const availableFlights = this.getAvailableFlightsFromDataset(
+          routeFlights,
+          fromStopId,
+          toStopId
+        );
+
+        // Вычисляем вес ребра
+        const weight = this.calculateWeight(
+          segment,
+          availableFlights,
+          i + 1,
+          i
+        );
+
+        const edge = new RouteEdge(
+          fromStopId,
+          toStopId,
+          segment,
+          weight,
+          availableFlights
+        );
+
+        graph.addEdge(edge);
+      }
+    }
+
+    return graph;
+  }
+
+  /**
+   * Построить граф маршрутов (legacy метод для обратной совместимости)
    */
   async buildGraph(date: string): Promise<RouteGraph> {
     const graph = new RouteGraph();
@@ -327,6 +406,112 @@ export class RouteGraphBuilder {
     }
 
     return undefined;
+  }
+
+  /**
+   * Извлечь название города из остановки (для Dataset)
+   */
+  private extractCityFromStop(name?: string, address?: string): string {
+    if (name) {
+      const nameParts = name.split(',');
+      if (nameParts.length > 1) {
+        return nameParts[nameParts.length - 1].trim();
+      }
+      const words = name.trim().split(/\s+/);
+      if (words.length > 1) {
+        return words[words.length - 1];
+      }
+      return name.trim();
+    }
+
+    if (address) {
+      const addressParts = address.split(',');
+      if (addressParts.length > 0) {
+        return addressParts[addressParts.length - 1].trim();
+      }
+    }
+
+    return name || '';
+  }
+
+  /**
+   * Определить тип транспорта по маршруту из Dataset
+   */
+  private detectTransportTypeFromDataset(route: {
+    name?: string;
+    routeNumber?: string;
+    transportType?: string;
+  }): TransportType {
+    // Сначала проверяем явно указанный тип
+    if (route.transportType) {
+      const type = route.transportType.toLowerCase();
+      if (type === 'airplane' || type === 'авиа') return TransportType.AIRPLANE;
+      if (type === 'bus' || type === 'автобус') return TransportType.BUS;
+      if (type === 'train' || type === 'поезд') return TransportType.TRAIN;
+      if (type === 'ferry' || type === 'паром') return TransportType.FERRY;
+      if (type === 'taxi' || type === 'такси') return TransportType.TAXI;
+    }
+
+    // Затем проверяем название и номер маршрута
+    const name = (route.name || route.routeNumber || '').toLowerCase();
+    if (name.includes('авиа') || name.includes('самолет') || name.includes('airplane')) {
+      return TransportType.AIRPLANE;
+    }
+    if (name.includes('автобус') || name.includes('bus')) {
+      return TransportType.BUS;
+    }
+    if (name.includes('поезд') || name.includes('train')) {
+      return TransportType.TRAIN;
+    }
+    if (name.includes('паром') || name.includes('ferry')) {
+      return TransportType.FERRY;
+    }
+    if (name.includes('такси') || name.includes('taxi')) {
+      return TransportType.TAXI;
+    }
+
+    return TransportType.UNKNOWN;
+  }
+
+  /**
+   * Получить доступные рейсы из Dataset
+   */
+  private getAvailableFlightsFromDataset(
+    flights: Array<{
+      id: string;
+      routeId: string;
+      departureTime: string;
+      arrivalTime: string;
+      fromStopId: string;
+      toStopId: string;
+      price?: number;
+      availableSeats?: number;
+    }>,
+    fromStopId: string,
+    toStopId: string
+  ): IAvailableFlight[] {
+    const availableFlights: IAvailableFlight[] = [];
+
+    for (const flight of flights) {
+      // Фильтруем рейсы по остановкам
+      if (flight.fromStopId === fromStopId && flight.toStopId === toStopId) {
+        availableFlights.push({
+          flightId: flight.id,
+          flightNumber: undefined, // Dataset может не содержать номер рейса
+          departureTime: flight.departureTime,
+          arrivalTime: flight.arrivalTime,
+          price: flight.price,
+          availableSeats: flight.availableSeats ?? 0,
+          status: 'active',
+        });
+      }
+    }
+
+    return availableFlights.sort((a, b) => {
+      const timeA = new Date(a.departureTime).getTime();
+      const timeB = new Date(b.departureTime).getTime();
+      return timeA - timeB;
+    });
   }
 }
 
