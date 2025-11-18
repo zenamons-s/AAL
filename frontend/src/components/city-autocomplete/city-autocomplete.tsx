@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { YAKUTIA_CITIES } from '@/shared/constants/cities'
+import { fetchCities } from '@/shared/utils/cities-api'
 
 interface CityAutocompleteProps {
   id: string
@@ -25,14 +25,40 @@ export function CityAutocomplete({
   const [isOpen, setIsOpen] = useState(false)
   const [filteredCities, setFilteredCities] = useState<string[]>([])
   const [highlightedIndex, setHighlightedIndex] = useState(-1)
+  const [availableCities, setAvailableCities] = useState<string[]>([])
+  const [loading, setLoading] = useState(true)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
+  // Загрузка списка городов при монтировании компонента
   useEffect(() => {
+    const loadCities = async () => {
+      try {
+        setLoading(true)
+        const cities = await fetchCities()
+        setAvailableCities(cities)
+      } catch (error) {
+        console.error('Failed to load cities:', error)
+        // Fallback уже обработан в fetchCities
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadCities()
+  }, [])
+
+  useEffect(() => {
+    if (loading || availableCities.length === 0) {
+      setFilteredCities([])
+      setIsOpen(false)
+      return
+    }
+
     const trimmedValue = value?.trim() || ''
     if (trimmedValue.length > 0) {
-      const exactMatch = YAKUTIA_CITIES.find(
+      const exactMatch = availableCities.find(
         (c) => c.toLowerCase().trim() === trimmedValue.toLowerCase()
       )
       if (exactMatch) {
@@ -40,7 +66,7 @@ export function CityAutocomplete({
         setIsOpen(false)
       } else {
         const valueLower = trimmedValue.toLowerCase()
-        const filtered = YAKUTIA_CITIES.filter((city) => {
+        const filtered = availableCities.filter((city) => {
           const cityLower = city.toLowerCase().trim()
           return cityLower.length > 1 && cityLower.includes(valueLower) && city.trim().length > 1
         })
@@ -53,7 +79,7 @@ export function CityAutocomplete({
       setIsOpen(false)
     }
     setHighlightedIndex(-1)
-  }, [value])
+  }, [value, availableCities, loading])
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -79,17 +105,21 @@ export function CityAutocomplete({
   }
 
   const handleInputFocus = () => {
+    if (loading || availableCities.length === 0) {
+      return
+    }
+
     const trimmedValue = value?.trim() || ''
     if (trimmedValue.length > 0) {
       const valueLower = trimmedValue.toLowerCase()
-      const exactMatch = YAKUTIA_CITIES.find(
+      const exactMatch = availableCities.find(
         (c) => c.toLowerCase().trim() === trimmedValue.toLowerCase()
       )
       if (exactMatch) {
         setFilteredCities([])
         setIsOpen(false)
       } else {
-        const filtered = YAKUTIA_CITIES.filter((city) => {
+        const filtered = availableCities.filter((city) => {
           const cityLower = city.toLowerCase().trim()
           return cityLower.length > 0 && cityLower.includes(valueLower) && city.length > 1
         })
@@ -105,9 +135,13 @@ export function CityAutocomplete({
   }
 
   const handleInputClick = () => {
+    if (loading || availableCities.length === 0) {
+      return
+    }
+
     const trimmedValue = value?.trim() || ''
     if (trimmedValue.length > 0) {
-      const exactMatch = YAKUTIA_CITIES.find(
+      const exactMatch = availableCities.find(
         (c) => c.toLowerCase().trim() === trimmedValue.toLowerCase()
       )
       if (exactMatch) {
@@ -115,7 +149,7 @@ export function CityAutocomplete({
         setIsOpen(false)
       } else {
         const valueLower = trimmedValue.toLowerCase()
-        const filtered = YAKUTIA_CITIES.filter((city) => {
+        const filtered = availableCities.filter((city) => {
           const cityLower = city.toLowerCase().trim()
           return cityLower.length > 1 && cityLower.includes(valueLower) && city.trim().length > 1
         })
@@ -143,12 +177,12 @@ export function CityAutocomplete({
     const trimmedCity = city?.trim() || ''
     if (trimmedCity.length > 0) {
       // Проверяем, что город есть в списке (регистронезависимо)
-      const cityExists = YAKUTIA_CITIES.some(
+      const cityExists = availableCities.some(
         (c) => c.toLowerCase().trim() === trimmedCity.toLowerCase()
       )
       if (cityExists) {
         // Находим точное совпадение из списка для корректного значения
-        const exactCity = YAKUTIA_CITIES.find(
+        const exactCity = availableCities.find(
           (c) => c.toLowerCase().trim() === trimmedCity.toLowerCase()
         )
         if (exactCity) {

@@ -1,11 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { CityAutocomplete } from '@/components/city-autocomplete'
 import { DatePicker } from '@/components/date-picker'
 import { TripClassSelect } from './trip-class-select'
-import { YAKUTIA_CITIES } from '@/shared/constants/cities'
+import { fetchCities } from '@/shared/utils/cities-api'
 
 export function SearchForm() {
   const router = useRouter()
@@ -22,19 +22,34 @@ export function SearchForm() {
     to?: string
     date?: string
   }>({})
+  const [availableCities, setAvailableCities] = useState<string[]>([])
+
+  // Загрузка списка городов при монтировании компонента
+  useEffect(() => {
+    const loadCities = async () => {
+      try {
+        const cities = await fetchCities()
+        setAvailableCities(cities)
+      } catch (error) {
+        console.error('Failed to load cities:', error)
+      }
+    }
+
+    loadCities()
+  }, [])
 
   const validateForm = (): boolean => {
     const newErrors: typeof errors = {}
 
     if (!formData.from.trim()) {
       newErrors.from = 'Укажите город отправления'
-    } else if (!YAKUTIA_CITIES.includes(formData.from)) {
+    } else if (availableCities.length > 0 && !availableCities.includes(formData.from)) {
       newErrors.from = 'Выберите город из списка'
     }
 
     if (!formData.to.trim()) {
       newErrors.to = 'Укажите город назначения'
-    } else if (!YAKUTIA_CITIES.includes(formData.to)) {
+    } else if (availableCities.length > 0 && !availableCities.includes(formData.to)) {
       newErrors.to = 'Выберите город из списка'
     }
 
@@ -69,12 +84,12 @@ export function SearchForm() {
       return
     }
 
-    if (!YAKUTIA_CITIES.includes(formData.from)) {
+    if (availableCities.length > 0 && !availableCities.includes(formData.from)) {
       setErrors({ from: 'Выберите город из списка' })
       return
     }
 
-    if (!YAKUTIA_CITIES.includes(formData.to)) {
+    if (availableCities.length > 0 && !availableCities.includes(formData.to)) {
       setErrors({ to: 'Выберите город из списка' })
       return
     }
@@ -124,11 +139,18 @@ export function SearchForm() {
   const isFormValid = () => {
     // Кнопка активна только при заполнении "Откуда" и "Куда"
     // Поля "Пассажиры", "Класс поездки", "Дата" не блокируют кнопку
+    if (!formData.from.trim() || !formData.to.trim()) {
+      return false
+    }
+    
+    // Если города еще загружаются, можно отправить форму
+    if (availableCities.length === 0) {
+      return formData.from !== formData.to
+    }
+
     return (
-      formData.from.trim() &&
-      formData.to.trim() &&
-      YAKUTIA_CITIES.includes(formData.from) &&
-      YAKUTIA_CITIES.includes(formData.to) &&
+      availableCities.includes(formData.from) &&
+      availableCities.includes(formData.to) &&
       formData.from !== formData.to
     )
   }

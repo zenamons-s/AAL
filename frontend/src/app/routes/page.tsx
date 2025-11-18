@@ -4,9 +4,10 @@ import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Header } from '@/components/header'
 import { Footer } from '@/components/footer'
+import { DataModeBadge } from '@/components/data-mode-badge'
 import { fetchApi } from '@/shared/utils/api'
 import { RouteRiskBadge } from '@/components/route-risk-badge'
-import { IBuiltRoute, IRiskAssessment, IRouteBuilderResult } from '@/shared/types/route-adapter'
+import { IBuiltRoute, IRiskAssessment, IRouteBuilderResult, DataSourceMode } from '@/shared/types/route-adapter'
 
 interface RouteSegment {
   segment: {
@@ -49,7 +50,8 @@ function RoutesContent() {
   const [alternatives, setAlternatives] = useState<Route[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [isFallback, setIsFallback] = useState(false)
+  const [dataMode, setDataMode] = useState<DataSourceMode | string | undefined>(undefined)
+  const [dataQuality, setDataQuality] = useState<number | undefined>(undefined)
 
   const from = searchParams.get('from') || ''
   const to = searchParams.get('to') || ''
@@ -81,6 +83,8 @@ function RoutesContent() {
           setError(result.error.message || 'Ошибка при поиске маршрутов')
           setRoutes([])
           setAlternatives([])
+          setDataMode(undefined)
+          setDataQuality(undefined)
         } else {
           const routesWithRisk = (result.routes || []).map((route) => ({
             ...route,
@@ -92,7 +96,8 @@ function RoutesContent() {
           }))
           setRoutes(routesWithRisk)
           setAlternatives(alternativesWithRisk)
-          setIsFallback(result.fallback || false)
+          setDataMode(result.dataMode)
+          setDataQuality(result.dataQuality)
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Ошибка при поиске маршрутов')
@@ -206,11 +211,18 @@ function RoutesContent() {
         {/* Результаты поиска */}
         {!loading && !error && (
           <>
+            {/* Индикатор режима данных */}
+            {dataMode && (
+              <div className="mb-6 flex justify-center">
+                <DataModeBadge dataMode={dataMode} dataQuality={dataQuality} />
+              </div>
+            )}
+
             {/* Основные маршруты */}
             {routes.length > 0 ? (
               <div className="space-y-4 mb-8">
                 <h2 className="text-2xl font-semibold mb-4" style={{ color: 'var(--color-text-dark)' }}>
-                  Найденные маршруты {isFallback && <span className="text-sm font-normal">(тестовые данные)</span>}
+                  Найденные маршруты
                 </h2>
                 {routes.map((route) => (
                   <div key={route.routeId} className="yakutia-card p-[18px] yakutia-transition">

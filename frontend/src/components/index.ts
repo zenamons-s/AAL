@@ -11,4 +11,5 @@ export { FavoritesSection } from './favorites-section'
 export { Footer } from './footer'
 export { CityAutocomplete } from './city-autocomplete'
 export { DatePicker } from './date-picker'
+export { DataModeBadge } from './data-mode-badge'
 

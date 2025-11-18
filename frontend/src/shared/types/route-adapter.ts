@@ -122,11 +122,20 @@ export interface IRiskAssessment {
   recommendations?: string[];
 }
 
+export enum DataSourceMode {
+  REAL = 'real',
+  RECOVERY = 'recovery',
+  MOCK = 'mock',
+  UNKNOWN = 'unknown',
+}
+
 export interface IRouteBuilderResult {
   routes: IBuiltRoute[];
   alternatives?: IBuiltRoute[];
   mlData?: unknown;
   riskAssessment?: IRiskAssessment;
+  dataMode?: DataSourceMode | string;
+  dataQuality?: number;
 }
 
 export interface RouteDetailsData {

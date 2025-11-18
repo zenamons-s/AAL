@@ -92,6 +92,7 @@ export async function getRouteGraphDiagnostics(req: Request, res: Response): Pro
 
 /**
  * Построить маршрут между двумя городами
+ * Использует адаптивную систему загрузки данных (REAL/RECOVERY/MOCK)
  */
 export async function buildRoute(req: Request, res: Response): Promise<void> {
   try {
@@ -116,30 +117,10 @@ export async function buildRoute(req: Request, res: Response): Promise<void> {
     });
 
     if (result.routes.length === 0) {
-      // Fallback только если OData недоступен
-      const { createODataClient } = await import('../../infrastructure/api/odata-client');
-      const odataClient = createODataClient();
-      if (!odataClient) {
-        const { createFallbackRoute } = await import('../../infrastructure/api/odata-client/fallback-data');
-        const fallbackRoute = createFallbackRoute(
-          String(from),
-          String(to),
-          String(date)
-        );
-        if (fallbackRoute) {
-          res.json({
-            routes: [fallbackRoute],
-            alternatives: [],
-            fallback: true,
-          });
-          return;
-        }
-      }
-
       res.status(404).json({
         error: {
           code: 'ROUTES_NOT_FOUND',
-          message: 'Маршруты не найдены',
+          message: 'Маршруты не найдены для указанных параметров',
         },
       });
       return;
@@ -147,37 +128,8 @@ export async function buildRoute(req: Request, res: Response): Promise<void> {
 
     res.json(result);
   } catch (error) {
-    // Fallback только если OData недоступен
-    const { createODataClient } = await import('../../infrastructure/api/odata-client');
-    const odataClient = createODataClient();
-    if (!odataClient) {
-      const { from, to, date } = req.query;
-      if (from && to && date) {
-        try {
-          const { createFallbackRoute } = await import('../../infrastructure/api/odata-client/fallback-data');
-          const fallbackRoute = createFallbackRoute(
-            String(from),
-            String(to),
-            String(date)
-          );
-          if (fallbackRoute) {
-            res.json({
-              routes: [fallbackRoute],
-              alternatives: [],
-              fallback: true,
-            });
-            return;
-          }
-        } catch (fallbackError) {
-          // Fallback не удался, возвращаем ошибку
-        }
-      }
-    }
-
     const errorMessage = error instanceof Error 
-      ? (error.message.includes('OData') || error.message.includes('authentication') || error.message.includes('timeout')
-          ? error.message 
-          : 'Ошибка при построении маршрута')
+      ? error.message 
       : 'Внутренняя ошибка сервера';
 
     res.status(500).json({
