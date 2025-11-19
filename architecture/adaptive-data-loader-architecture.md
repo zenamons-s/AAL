@@ -2258,3 +2258,4 @@ await dataLoader.reload();
 - ✅ Backend build успешен
 - ✅ Архитектура не нарушена
 
+

@@ -103,18 +103,46 @@ export class TransportDataService {
     const metricsRegistry = getMetricsRegistry();
 
     try {
-      // Шаг 1: Проверить кеш
+      // КРИТИЧЕСКИ ВАЖНО: Очищаем кеш при старте для удаления старых нестабильных ID
+      // Это гарантирует, что виртуальные остановки будут созданы заново со стабильными ID
+      console.log('[TransportDataService] 🔄 Очистка кеша перед загрузкой данных...');
+      try {
+        if (this.cacheRepository) {
+          await this.cacheRepository.invalidate(this.config.cacheKey);
+          console.log('[TransportDataService] ✅ Кеш очищен');
+        }
+      } catch (error) {
+        console.log('[TransportDataService] ⚠️ Не удалось очистить кеш (возможно, Redis недоступен), продолжаем...');
+      }
+      
+      // Шаг 1: Проверить кеш (после очистки кеш будет пустым, но проверяем на всякий случай)
+      // ВАЖНО: Кеш должен содержать датасет с виртуальными остановками и маршрутами
+      // Если кеш есть - используем его, не загружаем данные заново
       const cachedDataset = await this.checkCache();
       if (cachedDataset) {
         const loadTime = Date.now() - startTime;
-        this.logger.info('Cache hit: returning cached dataset', {
+        const virtualStops = cachedDataset.stops.filter(s => s.metadata?._virtual === true);
+        const virtualRoutes = cachedDataset.routes.filter(r => r.metadata?._virtual === true);
+        
+        this.logger.info('✅ Cache HIT: возвращаем кешированный датасет', {
           module: 'TransportDataService',
           operation: 'loadData',
           mode: cachedDataset.mode,
           quality: cachedDataset.quality,
           age_ms: Date.now() - cachedDataset.loadedAt.getTime(),
-          loadTime_ms: loadTime
+          loadTime_ms: loadTime,
+          virtualStops: virtualStops.length,
+          virtualRoutes: virtualRoutes.length,
+          totalStops: cachedDataset.stops.length,
+          totalRoutes: cachedDataset.routes.length,
+          totalFlights: cachedDataset.flights.length
         });
+        
+        console.log(`[TransportDataService] ✅ КЕШ НАЙДЕН! Используем кешированный датасет:`);
+        console.log(`[TransportDataService]   - Остановок: ${cachedDataset.stops.length} (виртуальных: ${virtualStops.length})`);
+        console.log(`[TransportDataService]   - Маршрутов: ${cachedDataset.routes.length} (виртуальных: ${virtualRoutes.length})`);
+        console.log(`[TransportDataService]   - Рейсов: ${cachedDataset.flights.length}`);
+        console.log(`[TransportDataService]   - Режим: ${cachedDataset.mode}, качество: ${cachedDataset.quality}`);
         
         // Record metrics
         metricsRegistry.recordRequest({
@@ -130,10 +158,11 @@ export class TransportDataService {
         return cachedDataset;
       }
 
-      this.logger.info('Cache miss: loading from providers', {
+      this.logger.info('❌ Cache MISS: загрузка данных из провайдеров', {
         module: 'TransportDataService',
         operation: 'loadData'
       });
+      console.log(`[TransportDataService] ❌ КЕШ НЕ НАЙДЕН. Загружаем данные из провайдеров...`);
 
       // Шаг 2: Выбрать провайдера
       let dataset: ITransportDataset;
@@ -279,6 +308,43 @@ export class TransportDataService {
         if (provider.getName() !== 'MockTransportProvider') {
           dataset = await this.fallbackToMock();
         }
+
+        // В MOCK режиме также создаём виртуальные остановки и маршруты
+        // для обеспечения полной связности графа между любыми городами
+        try {
+          const mockRecoveryStopTimer = this.logger.startTimer('recoveryService.recoverForMock');
+          // Создаём минимальный qualityReport для MOCK режима
+          const mockQualityReport: IQualityReport = {
+            overallScore: 100, // Mock данные идеальны
+            routesScore: 100,
+            stopsScore: 100,
+            coordinatesScore: 100,
+            schedulesScore: 100,
+            missingFields: [],
+            recommendations: ['create_virtual_stops', 'create_virtual_routes'],
+            validatedAt: new Date(),
+          };
+          
+          const recoveryResult = await this.recoveryService.recover(dataset, mockQualityReport);
+          mockRecoveryStopTimer();
+          
+          dataset = recoveryResult.dataset;
+          this.logger.info('Virtual stops and routes created for MOCK mode', {
+            module: 'TransportDataService',
+            operation: 'loadData',
+            virtualStopsCreated: recoveryResult.appliedOperations.includes('createVirtualStops'),
+            virtualRoutesCreated: recoveryResult.appliedOperations.includes('createVirtualRoutesThroughHub') || 
+                                  recoveryResult.appliedOperations.includes('createDirectVirtualConnections'),
+          });
+        } catch (error) {
+          const err = error as Error;
+          this.logger.warn('Failed to create virtual stops/routes in MOCK mode, continuing', {
+            module: 'TransportDataService',
+            operation: 'loadData',
+            error: err.message
+          });
+          // Продолжаем с исходными mock-данными
+        }
       }
 
       // Шаг 7: Установить метаданные
@@ -287,7 +353,18 @@ export class TransportDataService {
       dataset.loadedAt = new Date();
 
       // Шаг 8: Сохранить в кеш
+      // ВАЖНО: Сохраняем датасет с виртуальными остановками и маршрутами в кеш
+      // Это гарантирует, что при следующем запросе мы получим полный датасет
+      const virtualStops = dataset.stops.filter(s => s.metadata?._virtual === true);
+      const virtualRoutes = dataset.routes.filter(r => r.metadata?._virtual === true);
+      
+      console.log(`[TransportDataService] Сохранение датасета в кеш:`);
+      console.log(`[TransportDataService]   - Остановок: ${dataset.stops.length} (виртуальных: ${virtualStops.length})`);
+      console.log(`[TransportDataService]   - Маршрутов: ${dataset.routes.length} (виртуальных: ${virtualRoutes.length})`);
+      console.log(`[TransportDataService]   - Рейсов: ${dataset.flights.length}`);
+      
       await this.saveToCache(dataset);
+      console.log(`[TransportDataService] ✅ Датасет сохранён в кеш`);
 
       // Шаг 9: Сохранить информацию о загрузке
       this.lastLoadInfo = this.extractLoadInfo(dataset);

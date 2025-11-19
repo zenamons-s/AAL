@@ -817,3 +817,4 @@ this.logger.info('Data loading completed', {
 - `#architecture` - архитектурные вопросы
 - `#data-quality` - вопросы качества данных
 
+

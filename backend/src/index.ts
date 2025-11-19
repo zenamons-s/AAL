@@ -85,6 +85,25 @@ async function start() {
       }
     }
     
+    // ВАЖНО: Инициализируем единый датасет и граф при старте сервера
+    // Это гарантирует, что все виртуальные остановки и маршруты будут созданы один раз
+    // и переиспользоваться во всех запросах
+    console.log('🔄 Инициализация единого датасета и графа...');
+    try {
+      const { RouteGraphManager } = await import('./application/route-builder/RouteGraphManager');
+      const graphManager = RouteGraphManager.getInstance();
+      await graphManager.initialize();
+      
+      const stats = graphManager.getStats();
+      console.log('✅ Единый датасет и граф инициализированы:');
+      console.log(`   Датасет: остановок=${stats.datasetStats?.stops || 0}, маршрутов=${stats.datasetStats?.routes || 0}, рейсов=${stats.datasetStats?.flights || 0}`);
+      console.log(`   Граф: узлов=${stats.graphStats?.nodes || 0}, рёбер=${stats.graphStats?.edges || 0}`);
+      console.log(`   Режим: ${stats.datasetStats?.mode || 'unknown'}, качество: ${stats.datasetStats?.quality || 0}`);
+    } catch (error: any) {
+      console.error('❌ Ошибка при инициализации датасета и графа:', error?.message || String(error));
+      console.warn('⚠️ Продолжаем работу, но датасет будет загружаться при каждом запросе');
+    }
+    
     // Start server
     const server = app.listen(PORT, () => {
       console.log(`🚀 Backend server running on port ${PORT}`);

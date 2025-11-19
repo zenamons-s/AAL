@@ -326,3 +326,4 @@ backend/src/application/
 **Качество:** Production-ready  
 **Покрытие тестами:** Готов к написанию unit-тестов
 
+

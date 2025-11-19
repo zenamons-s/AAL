@@ -244,3 +244,4 @@ Application Layer зависит от интерфейсов из Domain Layer:
 **Статус:** Production-ready  
 **Архитектурный вариант:** B (Medium Complexity)
 
+

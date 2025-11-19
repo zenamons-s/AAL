@@ -242,3 +242,4 @@ export function getUserFriendlyMessage(error: Error): string {
   return 'An unexpected error occurred. Using fallback mechanisms to ensure service continuity.';
 }
 
+

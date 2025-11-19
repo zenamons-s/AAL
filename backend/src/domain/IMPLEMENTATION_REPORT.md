@@ -252,3 +252,4 @@ backend/src/domain/
 **Время реализации:** < 10 минут  
 **Качество:** Production-ready
 
+

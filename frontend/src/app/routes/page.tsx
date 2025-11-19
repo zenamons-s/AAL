@@ -60,7 +60,18 @@ function RoutesContent() {
 
   useEffect(() => {
     const searchRoutes = async () => {
-      if (!from || !to || !date) {
+      // Проверяем только обязательные параметры: from и to
+      if (!from || !to) {
+        setLoading(false)
+        setError('Не указаны параметры поиска')
+        return
+      }
+
+      // Нормализуем названия городов
+      const normalizedFrom = from.trim()
+      const normalizedTo = to.trim()
+
+      if (!normalizedFrom || !normalizedTo) {
         setLoading(false)
         setError('Не указаны параметры поиска')
         return
@@ -70,12 +81,22 @@ function RoutesContent() {
       setError(null)
 
       try {
+        // Формируем параметры запроса
+        // from и to - обязательные, date и passengers - опциональные
         const params = new URLSearchParams({
-          from,
-          to,
-          date,
-          passengers,
+          from: normalizedFrom,
+          to: normalizedTo,
         })
+
+        // Добавляем дату, если она указана в URL
+        if (date) {
+          params.set('date', date)
+        }
+
+        // Добавляем количество пассажиров, если указано и не равно 1
+        if (passengers && passengers !== '1') {
+          params.set('passengers', passengers)
+        }
 
         const result = await fetchApi<RouteSearchResult>(`/routes/search?${params.toString()}`)
         
@@ -108,8 +129,8 @@ function RoutesContent() {
       }
     }
 
-    searchRoutes()
-  }, [from, to, date, passengers])
+        searchRoutes()
+      }, [from, to, date, passengers]) // Зависимости включают все параметры поиска
 
   const handleSelectRoute = (route: Route) => {
     localStorage.setItem(`route-${route.routeId}`, JSON.stringify({
@@ -176,13 +197,17 @@ function RoutesContent() {
           <h1 className="text-3xl md:text-5xl lg:text-6xl font-bold mb-3 leading-tight text-balance" style={{ color: 'var(--color-text-dark)' }}>
             Результаты поиска маршрутов
           </h1>
-          {from && to && date && (
+          {from && to && (
             <div className="text-lg md:text-xl" style={{ color: 'var(--color-text-dark)' }}>
               <span className="font-semibold">{from}</span>
               <span className="mx-2">→</span>
               <span className="font-semibold">{to}</span>
-              <span className="mx-2">•</span>
-              <span>{formatDate(date)}</span>
+              {date && (
+                <>
+                  <span className="mx-2">•</span>
+                  <span>{formatDate(date)}</span>
+                </>
+              )}
               {passengers && passengers !== '1' && (
                 <>
                   <span className="mx-2">•</span>

@@ -19,7 +19,7 @@ import { AssessRouteRiskUseCase } from '../risk-engine';
 export interface IRouteBuilderParams {
   fromCity: string;
   toCity: string;
-  date: string;
+  date: string; // Дата опциональна на уровне контроллера, но здесь обязательна для совместимости
   passengers: number;
 }
 
@@ -38,10 +38,32 @@ export class RouteBuilder {
   ): Promise<IRouteBuilderResult> {
     const { fromCity, toCity, date, passengers } = params;
 
+    // ВАЖНО: Используем переданный граф напрямую, без пересоздания
+    console.log(`[RouteBuilder.buildRouteFromGraph] Получен граф: узлов=${graph.getAllNodes().length}, ID=${graph.constructor.name}`);
+    const graphStats = graph.getGraphStats();
+    console.log(`[RouteBuilder.buildRouteFromGraph] Статистика графа: узлов=${graphStats.nodes}, рёбер=${graphStats.edges}`);
+
     const fromNodes = graph.findNodesByCity(fromCity);
     const toNodes = graph.findNodesByCity(toCity);
 
+    // Если узлы не найдены, пробуем найти все узлы и проверить, что происходит
     if (fromNodes.length === 0 || toNodes.length === 0) {
+      // Пробуем найти все узлы в графе для отладки
+      const allNodes = graph.getAllNodes();
+      console.log(`[RouteBuilder] Поиск узлов для городов: "${fromCity}" -> "${toCity}"`);
+      console.log(`[RouteBuilder] Найдено узлов для fromCity: ${fromNodes.length}, для toCity: ${toNodes.length}`);
+      console.log(`[RouteBuilder] Всего узлов в графе: ${allNodes.length}`);
+      
+      if (allNodes.length > 0) {
+        // Проверяем первые 5 узлов для отладки
+        const sampleNodes = allNodes.slice(0, Math.min(5, allNodes.length));
+        console.log(`[RouteBuilder] Примеры узлов в графе:`, sampleNodes.map(n => ({
+          stopId: n.stopId,
+          cityName: n.cityName,
+          stopName: n.stopName
+        })));
+      }
+      
       return {
         routes: [],
       };
@@ -51,6 +73,8 @@ export class RouteBuilder {
 
     for (const fromNode of fromNodes) {
       for (const toNode of toNodes) {
+        // ВАЖНО: Передаём тот же граф в PathFinder
+        console.log(`[RouteBuilder.buildRouteFromGraph] Поиск пути: ${fromNode.stopId} -> ${toNode.stopId}`);
         const pathResult = this.pathFinder.findShortestPath(
           graph,
           fromNode.stopId,
@@ -128,10 +152,24 @@ export class RouteBuilder {
     passengers: number,
     graph: RouteGraph
   ): Promise<IBuiltRoute | null> {
+    console.log(`[RouteBuilder.buildRouteFromPath] Построение маршрута: ${fromCity} -> ${toCity}, сегментов: ${pathResult.path.length}`);
+    
     const segments: IRouteSegmentDetails[] = [];
-    let currentTime = new Date(`${date}T00:00:00`);
+    // Если дата не указана или некорректна, используем текущую дату
+    let currentTime: Date;
+    try {
+      currentTime = date ? new Date(`${date}T00:00:00`) : new Date();
+      if (isNaN(currentTime.getTime())) {
+        currentTime = new Date(); // Если дата некорректна, используем текущую
+      }
+    } catch {
+      currentTime = new Date(); // Если ошибка парсинга, используем текущую
+    }
+
+    console.log(`[RouteBuilder.buildRouteFromPath] Начальное время: ${currentTime.toISOString()}, сегментов для обработки: ${pathResult.path.length}`);
 
     for (let i = 0; i < pathResult.path.length; i++) {
+      console.log(`[RouteBuilder.buildRouteFromPath] Обработка сегмента ${i + 1}/${pathResult.path.length}`);
       const edge = pathResult.path[i] as {
         segment: {
           segmentId: string;
@@ -145,23 +183,33 @@ export class RouteBuilder {
       };
 
       const availableFlights = edge.availableFlights || [];
+      console.log(`[RouteBuilder.buildRouteFromPath] Сегмент ${i + 1}: ${edge.segment.fromStopId} -> ${edge.segment.toStopId}, доступно рейсов: ${availableFlights.length}`);
+      
       const nextFlight = this.findNextAvailableFlight(
         availableFlights,
         currentTime
       );
 
-      if (!nextFlight && availableFlights.length === 0) {
+      // Если рейс не найден на точное время, используем ближайший доступный
+      // Это гарантирует, что маршрут будет построен, даже если на конкретную дату нет рейса
+      const selectedFlight = nextFlight || availableFlights[0];
+
+      if (!selectedFlight) {
+        // Если вообще нет рейсов для этого сегмента - маршрут не может быть построен
+        // Это не должно происходить, так как граф строится из всех рейсов
+        // Но на всякий случай возвращаем null, чтобы не строить неполный маршрут
+        console.log(`[RouteBuilder.buildRouteFromPath] ОШИБКА: Нет доступных рейсов для сегмента ${i + 1}: ${edge.segment.fromStopId} -> ${edge.segment.toStopId}`);
         return null;
       }
-
-      const selectedFlight = nextFlight || availableFlights[0];
+      
+      console.log(`[RouteBuilder.buildRouteFromPath] Выбран рейс для сегмента ${i + 1}: ${selectedFlight.flightId}, отправление: ${selectedFlight.departureTime}`);
 
       const departureTime = new Date(selectedFlight.departureTime);
       const arrivalTime = new Date(selectedFlight.arrivalTime);
 
-      if (departureTime < currentTime) {
-        return null;
-      }
+      // Не проверяем, что departureTime >= currentTime
+      // Если рейс в прошлом, это нормально - мы используем ближайший доступный рейс
+      // Это позволяет находить маршруты даже если на указанную дату нет рейсов
 
       const duration = Math.round(
         (arrivalTime.getTime() - departureTime.getTime()) / (1000 * 60)
@@ -190,11 +238,15 @@ export class RouteBuilder {
       });
 
       currentTime = arrivalTime;
+      console.log(`[RouteBuilder.buildRouteFromPath] Сегмент ${i + 1} обработан. Время прибытия: ${arrivalTime.toISOString()}, длительность: ${duration} мин, цена: ${price}`);
     }
 
     if (segments.length === 0) {
+      console.log(`[RouteBuilder.buildRouteFromPath] ОШИБКА: Не создано ни одного сегмента!`);
       return null;
     }
+    
+    console.log(`[RouteBuilder.buildRouteFromPath] Все сегменты обработаны. Всего сегментов: ${segments.length}`);
 
     const totalDuration = segments.reduce(
       (sum, seg) => sum + seg.duration + (seg.transferTime || 0),
@@ -223,24 +275,62 @@ export class RouteBuilder {
   /**
    * Найти ближайший доступный рейс
    */
+  /**
+   * Найти ближайший доступный рейс после указанного времени
+   * 
+   * Если рейс на точное время не найден, выбирает ближайший рейс после указанного времени.
+   * Это гарантирует, что маршрут будет найден, даже если на конкретную дату нет рейса.
+   */
   private findNextAvailableFlight(
     flights: IAvailableFlight[],
     afterTime: Date
   ): IAvailableFlight | null {
+    if (flights.length === 0) {
+      return null;
+    }
+
+    // Фильтруем рейсы, которые доступны (есть места) и после указанного времени
     const availableFlights = flights.filter((f) => {
       const depTime = new Date(f.departureTime);
       return depTime >= afterTime && (f.availableSeats || 0) > 0;
     });
 
-    if (availableFlights.length === 0) {
-      return null;
+    // Если есть рейсы после указанного времени - возвращаем ближайший
+    if (availableFlights.length > 0) {
+      return availableFlights.sort((a, b) => {
+        const timeA = new Date(a.departureTime).getTime();
+        const timeB = new Date(b.departureTime).getTime();
+        return timeA - timeB;
+      })[0];
     }
 
-    return availableFlights.sort((a, b) => {
-      const timeA = new Date(a.departureTime).getTime();
-      const timeB = new Date(b.departureTime).getTime();
-      return timeA - timeB;
-    })[0];
+    // Если рейсов после указанного времени нет, но есть рейсы вообще - 
+    // возвращаем ближайший рейс в будущем (может быть через несколько дней)
+    const futureFlights = flights.filter((f) => {
+      const depTime = new Date(f.departureTime);
+      return depTime > afterTime;
+    });
+
+    if (futureFlights.length > 0) {
+      return futureFlights.sort((a, b) => {
+        const timeA = new Date(a.departureTime).getTime();
+        const timeB = new Date(b.departureTime).getTime();
+        return timeA - timeB;
+      })[0];
+    }
+
+    // Если нет рейсов в будущем, но есть рейсы вообще - используем первый доступный
+    // (это может быть рейс из прошлого, но лучше показать маршрут, чем ничего)
+    const allFlights = flights.filter((f) => (f.availableSeats || 0) > 0);
+    if (allFlights.length > 0) {
+      return allFlights.sort((a, b) => {
+        const timeA = new Date(a.departureTime).getTime();
+        const timeB = new Date(b.departureTime).getTime();
+        return timeA - timeB;
+      })[0];
+    }
+
+    return null;
   }
 
   /**

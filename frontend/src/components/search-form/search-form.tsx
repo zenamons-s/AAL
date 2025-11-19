@@ -57,9 +57,9 @@ export function SearchForm() {
       newErrors.to = 'Город назначения должен отличаться от города отправления'
     }
 
-    if (!formData.date) {
-      newErrors.date = 'Укажите дату поездки'
-    } else {
+    // Валидация даты (опционально)
+    // Если дата указана, проверяем, что она не в прошлом
+    if (formData.date) {
       const selectedDate = new Date(formData.date)
       const today = new Date()
       today.setHours(0, 0, 0, 0)
@@ -75,55 +75,64 @@ export function SearchForm() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
 
-    // Проверяем только обязательные поля: "Откуда" и "Куда"
-    if (!formData.from.trim() || !formData.to.trim()) {
-      setErrors({
-        from: !formData.from.trim() ? 'Укажите город отправления' : undefined,
-        to: !formData.to.trim() ? 'Укажите город назначения' : undefined,
+    // Используем актуальные значения из состояния
+    setFormData((currentFormData) => {
+      // Проверяем только обязательные поля: "Откуда" и "Куда"
+      const fromValue = currentFormData.from.trim()
+      const toValue = currentFormData.to.trim()
+
+      if (!fromValue || !toValue) {
+        setErrors({
+          from: !fromValue ? 'Укажите город отправления' : undefined,
+          to: !toValue ? 'Укажите город назначения' : undefined,
+        })
+        return currentFormData
+      }
+
+      // Нормализуем названия городов (убираем лишние пробелы)
+      const normalizedFrom = fromValue
+      const normalizedTo = toValue
+
+      if (availableCities.length > 0 && !availableCities.includes(normalizedFrom)) {
+        setErrors({ from: 'Выберите город из списка' })
+        return currentFormData
+      }
+
+      if (availableCities.length > 0 && !availableCities.includes(normalizedTo)) {
+        setErrors({ to: 'Выберите город из списка' })
+        return currentFormData
+      }
+
+      if (normalizedFrom === normalizedTo) {
+        setErrors({ to: 'Город назначения должен отличаться от города отправления' })
+        return currentFormData
+      }
+
+      // Очищаем ошибки
+      setErrors({})
+
+      // Формируем параметры для URL
+      // from и to - обязательные, date и passengers - опциональные
+      const params = new URLSearchParams({
+        from: normalizedFrom,
+        to: normalizedTo,
       })
-      return
-    }
 
-    if (availableCities.length > 0 && !availableCities.includes(formData.from)) {
-      setErrors({ from: 'Выберите город из списка' })
-      return
-    }
+      // Добавляем дату, если она указана
+      if (currentFormData.date) {
+        params.set('date', currentFormData.date)
+      }
 
-    if (availableCities.length > 0 && !availableCities.includes(formData.to)) {
-      setErrors({ to: 'Выберите город из списка' })
-      return
-    }
+      // Добавляем количество пассажиров, если указано и не равно 1
+      if (currentFormData.passengers && currentFormData.passengers !== '1') {
+        params.set('passengers', currentFormData.passengers)
+      }
 
-    if (formData.from === formData.to) {
-      setErrors({ to: 'Город назначения должен отличаться от города отправления' })
-      return
-    }
+      // Переход на страницу результатов поиска
+      router.push(`/routes?${params.toString()}`)
 
-    // Очищаем ошибки
-    setErrors({})
-
-    // Формируем параметры для URL
-    const params = new URLSearchParams({
-      from: formData.from,
-      to: formData.to,
+      return currentFormData
     })
-
-    // Добавляем дату, если она указана
-    if (formData.date) {
-      params.append('date', formData.date)
-    } else {
-      // Если дата не указана, используем сегодняшнюю дату
-      const today = new Date().toISOString().split('T')[0]
-      params.append('date', today)
-    }
-
-    // Добавляем пассажиров, если указано
-    if (formData.passengers && formData.passengers !== '1') {
-      params.append('passengers', formData.passengers)
-    }
-
-    // Переход на страницу результатов поиска
-    router.push(`/routes?${params.toString()}`)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -185,9 +194,10 @@ export function SearchForm() {
             placeholder="Город отправления"
             value={formData.from}
             onChange={(value) => {
-              setFormData({ ...formData, from: value })
+              const trimmedValue = value?.trim() || ''
+              setFormData((prev) => ({ ...prev, from: trimmedValue }))
               if (errors.from) {
-                setErrors({ ...errors, from: undefined })
+                setErrors((prev) => ({ ...prev, from: undefined }))
               }
             }}
             onKeyDown={handleKeyDown}
@@ -208,9 +218,10 @@ export function SearchForm() {
             placeholder="Город назначения"
             value={formData.to}
             onChange={(value) => {
-              setFormData({ ...formData, to: value })
+              const trimmedValue = value?.trim() || ''
+              setFormData((prev) => ({ ...prev, to: trimmedValue }))
               if (errors.to) {
-                setErrors({ ...errors, to: undefined })
+                setErrors((prev) => ({ ...prev, to: undefined }))
               }
             }}
             onKeyDown={handleKeyDown}
@@ -230,9 +241,9 @@ export function SearchForm() {
             label="Когда"
             value={formData.date}
             onChange={(value) => {
-              setFormData({ ...formData, date: value })
+              setFormData((prev) => ({ ...prev, date: value }))
               if (errors.date) {
-                setErrors({ ...errors, date: undefined })
+                setErrors((prev) => ({ ...prev, date: undefined }))
               }
             }}
             onKeyDown={handleKeyDown}
@@ -252,7 +263,7 @@ export function SearchForm() {
             label="Обратно"
             value={formData.returnDate}
             onChange={(value) => {
-              setFormData({ ...formData, returnDate: value })
+              setFormData((prev) => ({ ...prev, returnDate: value }))
             }}
             onKeyDown={handleKeyDown}
           />
@@ -283,10 +294,13 @@ export function SearchForm() {
               <button
                 type="button"
                 onClick={() => {
-                  const current = parseInt(formData.passengers) || 1
-                  if (current < 9) {
-                    setFormData({ ...formData, passengers: String(current + 1) })
-                  }
+                  setFormData((prev) => {
+                    const current = parseInt(prev.passengers) || 1
+                    if (current < 9) {
+                      return { ...prev, passengers: String(current + 1) }
+                    }
+                    return prev
+                  })
                 }}
                 className="w-6 h-4 flex items-center justify-center rounded text-xs yakutia-transition hover:opacity-80"
                 style={{ color: 'var(--color-text-light)' }}
@@ -297,10 +311,13 @@ export function SearchForm() {
               <button
                 type="button"
                 onClick={() => {
-                  const current = parseInt(formData.passengers) || 1
-                  if (current > 1) {
-                    setFormData({ ...formData, passengers: String(current - 1) })
-                  }
+                  setFormData((prev) => {
+                    const current = parseInt(prev.passengers) || 1
+                    if (current > 1) {
+                      return { ...prev, passengers: String(current - 1) }
+                    }
+                    return prev
+                  })
                 }}
                 className="w-6 h-4 flex items-center justify-center rounded text-xs yakutia-transition hover:opacity-80"
                 style={{ color: 'var(--color-text-light)' }}
@@ -322,7 +339,7 @@ export function SearchForm() {
             name="class"
             value={formData.class}
             onChange={(value) => {
-              setFormData({ ...formData, class: value })
+              setFormData((prev) => ({ ...prev, class: value }))
             }}
           />
         </div>
