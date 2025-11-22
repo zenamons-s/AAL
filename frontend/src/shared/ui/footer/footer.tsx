@@ -2,7 +2,7 @@
 
 import { memo } from 'react'
 import Link from 'next/link'
-import { VkIcon, OkIcon, TelegramIcon } from '@/shared/icons'
+import { BrandLogo } from '@/shared/ui'
 
 export const Footer = memo(function Footer() {
   const handleSupportClick = () => {
@@ -16,8 +16,12 @@ export const Footer = memo(function Footer() {
   return (
     <footer className="mt-auto border-t border-light bg-header-bg shadow-sm">
       <div className="container-main">
-        <div className="flex items-center justify-center py-sm gap-xl">
-          {/* Центр - ссылки */}
+        {/* Brand Block - первая строка */}
+        <div className="flex items-center justify-center py-sm">
+          <BrandLogo link={false} className="justify-center mx-auto" />
+        </div>
+        {/* Ссылки - вторая строка */}
+        <div className="flex items-center justify-center pb-sm gap-xl">
           <div className="flex items-center gap-sm">
             <Link
               href="/about"
