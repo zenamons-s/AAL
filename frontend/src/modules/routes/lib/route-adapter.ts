@@ -8,7 +8,7 @@ import {
   IRiskAssessment,
   RouteDetailsData,
 } from '../domain/types';
-import { getStopName } from './stop-names-cache';
+import { getStopName, setStopName } from './stop-names-cache';
 
 /**
  * Преобразует данные маршрута из формата IBuiltRoute в формат RouteDetailsData (OData)
@@ -32,19 +32,91 @@ export function adaptRouteToDetailsFormat(
 
   const routeDescription = `Маршрут с ${route.transferCount} пересадками, длительность ${route.totalDuration} мин`;
 
-  const segments = route.segments.map((segment, index) => ({
-    from: {
-      Наименование: getStopName(segment.segment.fromStopId),
-      Код: segment.segment.fromStopId,
-      Адрес: undefined,
-    } as { Наименование?: string; Код?: string; Адрес?: string } | null,
-    to: {
-      Наименование: getStopName(segment.segment.toStopId),
-      Код: segment.segment.toStopId,
-      Адрес: undefined,
-    } as { Наименование?: string; Код?: string; Адрес?: string } | null,
-    order: index,
-  }));
+  // Извлекаем названия остановок из сегментов и сохраняем в кэш
+  // Используем city name из fromCity/toCity как fallback
+  const segments = route.segments.map((segment, index) => {
+    // Пытаемся извлечь название города из stopId
+    // Если stopId содержит название города, используем его
+    const fromStopId = segment.segment.fromStopId;
+    const toStopId = segment.segment.toStopId;
+    
+    // Пытаемся извлечь название из stopId (например, "stop-yakutsk-airport" -> "Якутск, Аэропорт")
+    const extractCityName = (stopId: string, fallbackCity: string): string => {
+      // Если stopId уже в кэше, используем его
+      const cached = getStopName(stopId);
+      if (cached !== stopId) {
+        return cached;
+      }
+      
+      // Пытаемся извлечь название из stopId
+      // Формат может быть: "stop-011", "yakutsk-airport", "Якутск Аэропорт" и т.д.
+      const lowerStopId = stopId.toLowerCase();
+      
+      // Если stopId содержит название города, извлекаем его
+      if (lowerStopId.includes('якутск')) {
+        const name = stopId.includes('аэропорт') || stopId.includes('airport') 
+          ? 'Якутск, Аэропорт' 
+          : stopId.includes('вокзал') || stopId.includes('station')
+          ? 'Якутск, Вокзал'
+          : stopId.includes('автостанция') || stopId.includes('bus')
+          ? 'Якутск, Автостанция'
+          : 'Якутск';
+        setStopName(stopId, name);
+        return name;
+      }
+      
+      // Аналогично для других городов
+      const cityPatterns: Record<string, string> = {
+        'нерюнгри': 'Нерюнгри',
+        'мирный': 'Мирный',
+        'алдан': 'Алдан',
+        'олекминск': 'Олёкминск',
+        'ленск': 'Ленск',
+        'вилюйск': 'Вилюйск',
+        'удачный': 'Удачный',
+      };
+      
+      for (const [pattern, cityName] of Object.entries(cityPatterns)) {
+        if (lowerStopId.includes(pattern)) {
+          const stopType = stopId.includes('аэропорт') || stopId.includes('airport') 
+            ? ', Аэропорт' 
+            : stopId.includes('вокзал') || stopId.includes('station')
+            ? ', Вокзал'
+            : stopId.includes('автостанция') || stopId.includes('bus')
+            ? ', Автостанция'
+            : '';
+          const name = `${cityName}${stopType}`;
+          setStopName(stopId, name);
+          return name;
+        }
+      }
+      
+      // Если ничего не найдено, используем fallback
+      setStopName(stopId, fallbackCity);
+      return fallbackCity;
+    };
+    
+    const fromCityName = index === 0 ? route.fromCity : extractCityName(fromStopId, route.fromCity);
+    const toCityName = index === route.segments.length - 1 ? route.toCity : extractCityName(toStopId, route.toCity);
+    
+    return {
+      from: {
+        Наименование: fromCityName,
+        Код: fromStopId,
+        Адрес: undefined,
+      } as { Наименование?: string; Код?: string; Адрес?: string } | null,
+      to: {
+        Наименование: toCityName,
+        Код: toStopId,
+        Адрес: undefined,
+      } as { Наименование?: string; Код?: string; Адрес?: string } | null,
+      order: index,
+      transportType: segment.segment.transportType,
+      departureTime: segment.departureTime,
+      arrivalTime: segment.arrivalTime,
+      duration: segment.duration,
+    };
+  });
 
   const schedule = route.segments.flatMap((segment) => [
     {

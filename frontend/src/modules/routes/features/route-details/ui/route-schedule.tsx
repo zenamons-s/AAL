@@ -50,7 +50,7 @@ export function RouteSchedule({ schedule: _schedule, flights }: RouteSchedulePro
             <div className="flex items-center justify-between">
               <div className="flex-1">
                 <div className="flex items-center gap-4 mb-2">
-                  <span className="font-bold text-lg">
+                  <span className="font-bold text-lg" style={{ color: 'var(--color-text-dark)' }}>
                     {flight.НомерРейса || 'Без номера'}
                   </span>
                   {flight.Статус && (
@@ -71,21 +71,21 @@ export function RouteSchedule({ schedule: _schedule, flights }: RouteSchedulePro
                 <div className="flex items-center gap-6 text-sm">
                   <div>
                     <span className="text-gray-600">Отправление:</span>
-                    <span className="ml-2 font-semibold">
+                    <span className="ml-2 font-semibold" style={{ color: 'var(--color-text-dark)' }}>
                       {formatTime(flight.ВремяОтправления)}
                     </span>
                   </div>
                   
                   <div>
                     <span className="text-gray-600">Прибытие:</span>
-                    <span className="ml-2 font-semibold">
+                    <span className="ml-2 font-semibold" style={{ color: 'var(--color-text-dark)' }}>
                       {formatTime(flight.ВремяПрибытия)}
                     </span>
                   </div>
                   
                   <div>
                     <span className="text-gray-600">Свободных мест:</span>
-                    <span className="ml-2 font-semibold">
+                    <span className="ml-2 font-semibold" style={{ color: 'var(--color-text-dark)' }}>
                       {flight.availableSeats}
                     </span>
                   </div>

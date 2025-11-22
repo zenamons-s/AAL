@@ -95,7 +95,7 @@ export function RouteAlternatives({ routes }: RouteAlternativesProps) {
             <div className="font-semibold text-blue-800 mb-1">
               ⚡ Быстрее
             </div>
-            <div className="text-sm">
+            <div className="text-sm" style={{ color: 'var(--color-text-dark)' }}>
               {fastest.route.route.Наименование || fastest.route.route.Код}
             </div>
             {fastest.duration && (
@@ -111,7 +111,7 @@ export function RouteAlternatives({ routes }: RouteAlternativesProps) {
             <div className="font-semibold text-green-800 mb-1">
               💰 Дешевле
             </div>
-            <div className="text-sm">
+            <div className="text-sm" style={{ color: 'var(--color-text-dark)' }}>
               {cheapest.route.route.Наименование || cheapest.route.route.Код}
             </div>
             {cheapest.price !== Infinity && (

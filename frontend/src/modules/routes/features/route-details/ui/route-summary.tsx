@@ -31,14 +31,14 @@ export const RouteSummary = memo(function RouteSummary({ from, to, date, route }
       
       <div className="space-y-2">
         <div className="flex items-center gap-2">
-          <span className="font-semibold">Дата:</span>
-          <span>{formatDate(date, { full: true })}</span>
+          <span className="font-semibold" style={{ color: 'var(--color-text-dark)' }}>Дата:</span>
+          <span style={{ color: 'var(--color-text-dark)' }}>{formatDate(date, { full: true })}</span>
         </div>
         
         {route.Наименование && (
           <div className="flex items-center gap-2">
-            <span className="font-semibold">Маршрут:</span>
-            <span>{route.Наименование}</span>
+            <span className="font-semibold" style={{ color: 'var(--color-text-dark)' }}>Маршрут:</span>
+            <span style={{ color: 'var(--color-text-dark)' }}>{route.Наименование}</span>
           </div>
         )}
 
@@ -50,16 +50,16 @@ export const RouteSummary = memo(function RouteSummary({ from, to, date, route }
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
           <div className="border-l-4 border-blue-500 pl-4">
-            <div className="font-semibold">Отправление</div>
-            <div>{from.Наименование || from.Код}</div>
+            <div className="font-semibold" style={{ color: 'var(--color-text-dark)' }}>Отправление</div>
+            <div style={{ color: 'var(--color-text-dark)' }}>{from.Наименование || from.Код}</div>
             {from.Адрес && (
               <div className="text-sm text-gray-600">{from.Адрес}</div>
             )}
           </div>
           
           <div className="border-l-4 border-green-500 pl-4">
-            <div className="font-semibold">Прибытие</div>
-            <div>{to.Наименование || to.Код}</div>
+            <div className="font-semibold" style={{ color: 'var(--color-text-dark)' }}>Прибытие</div>
+            <div style={{ color: 'var(--color-text-dark)' }}>{to.Наименование || to.Код}</div>
             {to.Адрес && (
               <div className="text-sm text-gray-600">{to.Адрес}</div>
             )}

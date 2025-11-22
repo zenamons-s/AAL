@@ -27,21 +27,28 @@ export async function fetchApi<T>(
 
     if (!response.ok) {
       let errorMessage = `API Error: ${response.status} ${response.statusText}`;
+      let errorCode: string | undefined;
       
       try {
         const errorData = await response.json();
         if (errorData.error) {
           if (errorData.error.message) {
             errorMessage = errorData.error.message;
-          } else if (errorData.error.code) {
-            errorMessage = `${errorData.error.code}: ${errorMessage}`;
+          }
+          if (errorData.error.code) {
+            errorCode = errorData.error.code;
+            errorMessage = errorData.error.message || errorMessage;
           }
         }
       } catch {
         // Если не удалось распарсить JSON, используем стандартное сообщение
       }
       
-      throw new Error(errorMessage);
+      // Создаем ошибку с кодом для различения типов ошибок
+      const error = new Error(errorMessage) as Error & { code?: string; status?: number };
+      error.code = errorCode;
+      error.status = response.status;
+      throw error;
     }
 
     return response.json();

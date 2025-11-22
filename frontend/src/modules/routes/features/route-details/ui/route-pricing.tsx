@@ -81,7 +81,7 @@ export const RoutePricing = memo(function RoutePricing({ flights }: RoutePricing
       <div className="space-y-3">
         {flights.map((flight) => (
           <div key={flight.Ref_Key} className="border rounded-lg p-4">
-            <div className="font-semibold mb-2">
+            <div className="font-semibold mb-2" style={{ color: 'var(--color-text-dark)' }}>
               Рейс {flight.НомерРейса || 'Без номера'}
             </div>
             
@@ -92,7 +92,7 @@ export const RoutePricing = memo(function RoutePricing({ flights }: RoutePricing
                     key={index}
                     className="border rounded p-3 hover:shadow-md transition-shadow"
                   >
-                    <div className="font-semibold mb-1">
+                    <div className="font-semibold mb-1" style={{ color: 'var(--color-text-dark)' }}>
                       {tariff.Наименование || tariff.Код || 'Тариф'}
                     </div>
                     <div className="text-2xl font-bold text-green-600">

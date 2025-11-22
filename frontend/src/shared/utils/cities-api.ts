@@ -17,17 +17,23 @@ export async function fetchCities(): Promise<string[]> {
     return validatedResponse.cities || [];
   } catch (error) {
     // Fallback на статический список если backend недоступен или валидация не прошла
+    // Используем только города из yakutia-cities-reference.json
     const fallbackCities = [
       'Якутск',
-      'Нерюнгри',
       'Мирный',
-      'Удачный',
-      'Алдан',
-      'Олекминск',
+      'Нерюнгри',
       'Ленск',
       'Вилюйск',
-      'Чурапча',
-      'Амга',
+      'Олёкминск',
+      'Тикси',
+      'Алдан',
+      'Хандыга',
+      'Покровск',
+      'Удачный',
+      'Верхоянск',
+      'Жиганск',
+      'Среднеколымск',
+      'Чокурдах',
     ];
     
     return fallbackCities;

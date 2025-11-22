@@ -12,6 +12,10 @@ interface Segment {
     Адрес?: string;
   } | null;
   order: number;
+  transportType?: string;
+  departureTime?: string;
+  arrivalTime?: string;
+  duration?: number;
 }
 
 interface RouteSegmentsProps {
@@ -48,8 +52,15 @@ export function RouteSegments({ segments }: RouteSegmentsProps) {
               </div>
               
               <div className="flex-1">
-                <div className="font-semibold">
-                  {segment.from?.Наименование || segment.from?.Код || 'Неизвестно'}
+                <div className="flex items-center justify-between mb-1">
+                  <div className="font-semibold" style={{ color: 'var(--color-text-dark)' }}>
+                    {segment.from?.Наименование || segment.from?.Код || 'Неизвестно'}
+                  </div>
+                  {segment.departureTime && (
+                    <div className="text-sm text-gray-600 font-mono">
+                      {segment.departureTime}
+                    </div>
+                  )}
                 </div>
                 <div className="text-gray-600 text-sm mt-1">
                   {segment.from?.Адрес}
@@ -57,15 +68,39 @@ export function RouteSegments({ segments }: RouteSegmentsProps) {
                 
                 <div className="my-2 flex items-center gap-2">
                   <div className="flex-1 h-px bg-gray-300"></div>
-                  <span className="text-xs text-gray-500">↓</span>
+                  <div className="flex items-center gap-2">
+                    {segment.transportType && (
+                      <span className="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded" style={{ color: 'var(--color-text-dark)' }}>
+                        {segment.transportType === 'airplane' ? '✈️ Самолёт' :
+                         segment.transportType === 'bus' ? '🚌 Автобус' :
+                         segment.transportType === 'train' ? '🚂 Поезд' :
+                         segment.transportType === 'ferry' ? '⛴️ Паром' :
+                         segment.transportType === 'taxi' ? '🚕 Такси' :
+                         '🚌 Транспорт'}
+                      </span>
+                    )}
+                    <span className="text-xs text-gray-500">↓</span>
+                  </div>
                   <div className="flex-1 h-px bg-gray-300"></div>
                 </div>
                 
-                <div className="font-semibold">
-                  {segment.to?.Наименование || segment.to?.Код || 'Неизвестно'}
+                <div className="flex items-center justify-between mb-1">
+                  <div className="font-semibold" style={{ color: 'var(--color-text-dark)' }}>
+                    {segment.to?.Наименование || segment.to?.Код || 'Неизвестно'}
+                  </div>
+                  {segment.arrivalTime && (
+                    <div className="text-sm text-gray-600 font-mono">
+                      {segment.arrivalTime}
+                    </div>
+                  )}
                 </div>
                 <div className="text-gray-600 text-sm mt-1">
                   {segment.to?.Адрес}
+                  {segment.duration && (
+                    <span className="ml-2 text-xs">
+                      ({Math.floor(segment.duration / 60)}ч {segment.duration % 60}м)
+                    </span>
+                  )}
                 </div>
               </div>
             </div>

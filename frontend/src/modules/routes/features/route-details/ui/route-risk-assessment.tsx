@@ -88,7 +88,7 @@ export function RouteRiskAssessment({
           {factors.transferCount !== undefined && (
             <div className="flex justify-between items-center py-2 border-b">
               <span className="text-gray-600">Количество пересадок:</span>
-              <span className="font-semibold">{factors.transferCount}</span>
+              <span className="font-semibold" style={{ color: 'var(--color-text-dark)' }}>{factors.transferCount}</span>
             </div>
           )}
 
@@ -96,13 +96,13 @@ export function RouteRiskAssessment({
             <div className="space-y-2 py-2 border-b">
               <div className="flex justify-between items-center">
                 <span className="text-gray-600">Средняя задержка (90 дней):</span>
-                <span className="font-semibold">
+                <span className="font-semibold" style={{ color: 'var(--color-text-dark)' }}>
                   {factors.historicalDelays.averageDelay90Days} мин
                 </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-gray-600">Частота задержек:</span>
-                <span className="font-semibold">
+                <span className="font-semibold" style={{ color: 'var(--color-text-dark)' }}>
                   {(factors.historicalDelays.delayFrequency * 100).toFixed(1)}%
                 </span>
               </div>
@@ -112,7 +112,7 @@ export function RouteRiskAssessment({
           {factors.cancellations && (
             <div className="flex justify-between items-center py-2 border-b">
               <span className="text-gray-600">Процент отмен (90 дней):</span>
-              <span className="font-semibold">
+              <span className="font-semibold" style={{ color: 'var(--color-text-dark)' }}>
                 {(factors.cancellations.cancellationRate90Days * 100).toFixed(1)}%
               </span>
             </div>
@@ -121,7 +121,7 @@ export function RouteRiskAssessment({
           {factors.occupancy && (
             <div className="flex justify-between items-center py-2 border-b">
               <span className="text-gray-600">Средняя загруженность:</span>
-              <span className="font-semibold">
+              <span className="font-semibold" style={{ color: 'var(--color-text-dark)' }}>
                 {(factors.occupancy.averageOccupancy * 100).toFixed(0)}%
               </span>
             </div>

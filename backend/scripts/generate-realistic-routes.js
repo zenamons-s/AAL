@@ -232,3 +232,4 @@ fs.writeFileSync(flightsPath, JSON.stringify(allFlights, null, 2), 'utf-8');
 console.log(`Total routes: ${allRoutes.length}, Total flights: ${allFlights.length}`);
 console.log('Files updated successfully!');
 
+

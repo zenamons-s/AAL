@@ -4,7 +4,7 @@ import { Suspense, useMemo, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Header, Footer, ErrorBoundary, DataModeBadge } from '@/shared/ui'
 import { RouteRiskBadge, useRoutesSearch } from '@/modules/routes'
-import { IBuiltRoute, IRiskAssessment } from '@/modules/routes/domain'
+import { IBuiltRoute, IRiskAssessment, TransportType } from '@/modules/routes/domain'
 import { safeLocalStorage } from '@/shared/utils/storage'
 import { formatDuration, formatTime, formatDate, formatPrice } from '@/shared/utils/format'
 
@@ -29,7 +29,7 @@ function RoutesContent() {
   const date = searchParams.get('date') || ''
   const passengers = searchParams.get('passengers') || '1'
 
-  const { routes, alternatives, dataMode, dataQuality, isLoading, error } = useRoutesSearch({
+  const { routes, alternatives, dataMode, dataQuality, isLoading, error, errorCode } = useRoutesSearch({
     from,
     to,
     date,
@@ -38,9 +38,34 @@ function RoutesContent() {
 
   // Обработка случая, когда не указаны обязательные параметры
   const hasRequiredParams = Boolean(from && to)
+  
+  // Определяем тип ошибки и сообщение для пользователя
   const errorMessage = useMemo(() => {
-    return error ? error.message : (!hasRequiredParams ? 'Не указаны параметры поиска' : null)
-  }, [error, hasRequiredParams])
+    if (!hasRequiredParams) {
+      return 'Не указаны параметры поиска'
+    }
+    
+    if (!error) {
+      return null
+    }
+    
+    // Различаем типы ошибок по коду
+    if (errorCode === 'STOPS_NOT_FOUND') {
+      return `Города "${from}" или "${to}" не найдены в базе данных. Проверьте правильность написания.`
+    }
+    
+    if (errorCode === 'GRAPH_OUT_OF_SYNC') {
+      return 'Данные временно недоступны. Пожалуйста, попробуйте позже.'
+    }
+    
+    if (errorCode === 'ROUTES_NOT_FOUND') {
+      // Для ROUTES_NOT_FOUND не показываем ошибку, показываем заглушку "маршруты не найдены"
+      return null
+    }
+    
+    // Общая ошибка
+    return error.message || 'Произошла ошибка при поиске маршрутов'
+  }, [error, errorCode, hasRequiredParams, from, to])
 
   // Мемоизация функции выбора маршрута
   const handleSelectRoute = useCallback((route: Route) => {
@@ -107,15 +132,15 @@ function RoutesContent() {
           </div>
         )}
 
-        {/* Ошибка */}
-        {errorMessage && !isLoading && (
+        {/* Ошибка (только для критичных ошибок, не для ROUTES_NOT_FOUND) */}
+        {errorMessage && !isLoading && errorCode !== 'ROUTES_NOT_FOUND' && (
           <div className="yakutia-card p-6 text-center">
             <p className="text-lg text-dark">{errorMessage}</p>
           </div>
         )}
 
         {/* Результаты поиска */}
-        {!isLoading && !errorMessage && (
+        {!isLoading && (!errorMessage || errorCode === 'ROUTES_NOT_FOUND') && (
           <>
             {/* Индикатор режима данных */}
             {dataMode && (
@@ -125,96 +150,128 @@ function RoutesContent() {
             )}
 
             {/* Основные маршруты */}
-            {routes.length > 0 ? (
+            {routes && routes.length > 0 ? (
               <div className="space-y-4 mb-8">
                 <h2 className="text-2xl font-semibold mb-4 text-dark">
                   Найденные маршруты
                 </h2>
-                {routes.map((route) => (
-                  <div key={route.routeId} className="yakutia-card p-[18px] yakutia-transition">
-                    <div className="flex flex-col gap-4">
-                      {/* Заголовок маршрута */}
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="text-xl font-bold text-dark">
-                              {route.fromCity}
-                            </span>
-                            <span className="text-lg text-primary">→</span>
-                            <span className="text-xl font-bold text-dark">
-                              {route.toCity}
-                            </span>
-                          </div>
-                          <div className="text-sm text-dark">
-                            {formatTime(route.departureTime)} - {formatTime(route.arrivalTime)}
-                            {route.transferCount > 0 && (
-                              <span className="ml-2">
-                                • {route.transferCount} {route.transferCount === 1 ? 'пересадка' : 'пересадки'}
+                {routes.map((route) => {
+                  // Безопасная проверка наличия всех необходимых полей
+                  if (!route || !route.routeId || !route.fromCity || !route.toCity) {
+                    return null
+                  }
+                  
+                  return (
+                    <div key={route.routeId} className="yakutia-card p-[18px] yakutia-transition">
+                      <div className="flex flex-col gap-4">
+                        {/* Заголовок маршрута */}
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="text-xl font-bold text-dark">
+                                {route.fromCity}
                               </span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="flex items-center justify-end gap-3 mb-2">
-                            <div className="text-2xl font-bold text-primary">
-                              {formatPrice(route.totalPrice)}
+                              <span className="text-lg text-primary">→</span>
+                              <span className="text-xl font-bold text-dark">
+                                {route.toCity}
+                              </span>
                             </div>
-                            {route.riskAssessment && (
-                              <RouteRiskBadge riskScore={route.riskAssessment.riskScore} compact />
+                            <div className="text-sm text-dark">
+                              {route.departureTime && formatTime(route.departureTime)} - {route.arrivalTime && formatTime(route.arrivalTime)}
+                              {route.transferCount !== undefined && route.transferCount > 0 && (
+                                <span className="ml-2">
+                                  • {route.transferCount} {route.transferCount === 1 ? 'пересадка' : 'пересадки'}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="flex items-center justify-end gap-3 mb-2">
+                              {route.totalPrice !== undefined && (
+                                <div className="text-2xl font-bold text-primary">
+                                  {formatPrice(route.totalPrice)}
+                                </div>
+                              )}
+                              {route.riskAssessment && route.riskAssessment.riskScore && (
+                                <RouteRiskBadge riskScore={route.riskAssessment.riskScore} compact />
+                              )}
+                            </div>
+                            {route.totalDuration !== undefined && (
+                              <div className="text-sm text-dark">
+                                {formatDuration(route.totalDuration)}
+                              </div>
                             )}
                           </div>
-                          <div className="text-sm text-dark">
-                            {formatDuration(route.totalDuration)}
-                          </div>
                         </div>
-                      </div>
 
-                      {/* Сегменты маршрута */}
-                      {route.segments && route.segments.length > 0 && (
-                        <div className="border-t pt-4 border-card">
-                          <div className="space-y-3">
-                            {route.segments.map((segment, index) => (
-                              <div key={index} className="flex items-center gap-3">
-                                <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold bg-primary text-white">
-                                  {index + 1}
-                                </div>
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <span className="text-sm font-medium text-dark">
-                                      {getTransportTypeLabel(segment.segment.transportType)}
-                                    </span>
-                                    <span className="text-xs text-dark">
-                                      {formatTime(segment.departureTime)} - {formatTime(segment.arrivalTime)}
-                                    </span>
+                        {/* Сегменты маршрута */}
+                        {route.segments && Array.isArray(route.segments) && route.segments.length > 0 && (
+                          <div className="border-t pt-4 border-card">
+                            <div className="space-y-3">
+                              {route.segments.map((segment, index) => {
+                                // Безопасная проверка наличия segment
+                                if (!segment) {
+                                  return null
+                                }
+                                
+                                // Если segment.segment отсутствует, используем значения напрямую из segment
+                                const transportType = segment.segment?.transportType || TransportType.BUS
+                                const segmentDuration = segment.duration ?? 0
+                                const segmentPrice = segment.price ?? 0
+                                
+                                return (
+                                  <div key={index} className="flex items-center gap-3">
+                                    <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold bg-primary text-white">
+                                      {index + 1}
+                                    </div>
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <span className="text-sm font-medium text-dark">
+                                          {getTransportTypeLabel(String(transportType))}
+                                        </span>
+                                        {segment.departureTime && segment.arrivalTime && (
+                                          <span className="text-xs text-dark">
+                                            {formatTime(segment.departureTime)} - {formatTime(segment.arrivalTime)}
+                                          </span>
+                                        )}
+                                      </div>
+                                      {(segmentDuration > 0 || segmentPrice > 0) && (
+                                        <div className="text-xs text-dark">
+                                          {segmentDuration > 0 && formatDuration(segmentDuration)}
+                                          {segmentDuration > 0 && segmentPrice > 0 && ' • '}
+                                          {segmentPrice > 0 && formatPrice(segmentPrice)}
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
-                                  <div className="text-xs text-dark">
-                                    {formatDuration(segment.duration)} • {formatPrice(segment.price)}
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
+                                )
+                              })}
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        )}
 
-                      {/* Кнопка выбора */}
-                      <div className="flex justify-end pt-2">
-                        <button
-                          onClick={() => handleSelectRoute(route)}
-                          aria-label={`Выбрать маршрут из ${route.fromCity} в ${route.toCity}`}
-                          className="px-6 py-2 rounded-yakutia yakutia-transition font-semibold bg-primary hover:bg-primary-hover text-white"
-                        >
-                          Выбрать маршрут
-                        </button>
+                        {/* Кнопка выбора */}
+                        <div className="flex justify-end pt-2">
+                          <button
+                            onClick={() => handleSelectRoute(route)}
+                            aria-label={`Выбрать маршрут из ${route.fromCity} в ${route.toCity}`}
+                            className="px-6 py-2 rounded-yakutia yakutia-transition font-semibold bg-primary hover:bg-primary-hover text-white"
+                          >
+                            Выбрать маршрут
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             ) : (
               <div className="yakutia-card p-12 text-center">
                 <p className="text-xl font-semibold mb-2 text-dark">
-                  Маршруты не найдены
+                  {errorCode === 'ROUTES_NOT_FOUND' 
+                    ? `Маршрутов между ${from} и ${to}${date ? ` на ${formatDate(date)}` : ''} не найдено`
+                    : 'Маршруты не найдены'
+                  }
                 </p>
                 <p className="text-base text-dark">
                   Попробуйте изменить параметры поиска или выберите другую дату
@@ -223,91 +280,120 @@ function RoutesContent() {
             )}
 
             {/* Альтернативные маршруты */}
-            {alternatives && alternatives.length > 0 && (
+            {alternatives && Array.isArray(alternatives) && alternatives.length > 0 && (
               <div className="space-y-4 mt-8">
                 <h2 className="text-2xl font-semibold mb-4 text-dark">
                   Альтернативные маршруты
                 </h2>
-                {alternatives.map((route) => (
-                  <div key={route.routeId} className="yakutia-card p-[18px] yakutia-transition">
-                    <div className="flex flex-col gap-4">
-                      {/* Заголовок маршрута */}
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="text-xl font-bold text-dark">
-                              {route.fromCity}
-                            </span>
-                            <span className="text-lg text-primary">→</span>
-                            <span className="text-xl font-bold text-dark">
-                              {route.toCity}
-                            </span>
-                          </div>
-                          <div className="text-sm text-dark">
-                            {formatTime(route.departureTime)} - {formatTime(route.arrivalTime)}
-                            {route.transferCount > 0 && (
-                              <span className="ml-2">
-                                • {route.transferCount} {route.transferCount === 1 ? 'пересадка' : 'пересадки'}
+                {alternatives.map((route) => {
+                  // Безопасная проверка наличия всех необходимых полей
+                  if (!route || !route.routeId || !route.fromCity || !route.toCity) {
+                    return null
+                  }
+                  
+                  return (
+                    <div key={route.routeId} className="yakutia-card p-[18px] yakutia-transition">
+                      <div className="flex flex-col gap-4">
+                        {/* Заголовок маршрута */}
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="text-xl font-bold text-dark">
+                                {route.fromCity}
                               </span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="flex items-center justify-end gap-3 mb-2">
-                            <div className="text-2xl font-bold text-primary">
-                              {formatPrice(route.totalPrice)}
+                              <span className="text-lg text-primary">→</span>
+                              <span className="text-xl font-bold text-dark">
+                                {route.toCity}
+                              </span>
                             </div>
-                            {route.riskAssessment && (
-                              <RouteRiskBadge riskScore={route.riskAssessment.riskScore} compact />
+                            <div className="text-sm text-dark">
+                              {route.departureTime && formatTime(route.departureTime)} - {route.arrivalTime && formatTime(route.arrivalTime)}
+                              {route.transferCount !== undefined && route.transferCount > 0 && (
+                                <span className="ml-2">
+                                  • {route.transferCount} {route.transferCount === 1 ? 'пересадка' : 'пересадки'}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="flex items-center justify-end gap-3 mb-2">
+                              {route.totalPrice !== undefined && (
+                                <div className="text-2xl font-bold text-primary">
+                                  {formatPrice(route.totalPrice)}
+                                </div>
+                              )}
+                              {route.riskAssessment && route.riskAssessment.riskScore && (
+                                <RouteRiskBadge riskScore={route.riskAssessment.riskScore} compact />
+                              )}
+                            </div>
+                            {route.totalDuration !== undefined && (
+                              <div className="text-sm text-dark">
+                                {formatDuration(route.totalDuration)}
+                              </div>
                             )}
                           </div>
-                          <div className="text-sm text-dark">
-                            {formatDuration(route.totalDuration)}
-                          </div>
                         </div>
-                      </div>
 
-                      {/* Сегменты маршрута */}
-                      {route.segments && route.segments.length > 0 && (
-                        <div className="border-t pt-4 border-card">
-                          <div className="space-y-3">
-                            {route.segments.map((segment, index) => (
-                              <div key={index} className="flex items-center gap-3">
-                                <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold bg-primary text-white">
-                                  {index + 1}
-                                </div>
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <span className="text-sm font-medium text-dark">
-                                      {getTransportTypeLabel(segment.segment.transportType)}
-                                    </span>
-                                    <span className="text-xs text-dark">
-                                      {formatTime(segment.departureTime)} - {formatTime(segment.arrivalTime)}
-                                    </span>
+                        {/* Сегменты маршрута */}
+                        {route.segments && Array.isArray(route.segments) && route.segments.length > 0 && (
+                          <div className="border-t pt-4 border-card">
+                            <div className="space-y-3">
+                              {route.segments.map((segment, index) => {
+                                // Безопасная проверка наличия segment
+                                if (!segment) {
+                                  return null
+                                }
+                                
+                                // Если segment.segment отсутствует, используем значения напрямую из segment
+                                const transportType = segment.segment?.transportType || TransportType.BUS
+                                const segmentDuration = segment.duration ?? 0
+                                const segmentPrice = segment.price ?? 0
+                                
+                                return (
+                                  <div key={index} className="flex items-center gap-3">
+                                    <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold bg-primary text-white">
+                                      {index + 1}
+                                    </div>
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <span className="text-sm font-medium text-dark">
+                                          {getTransportTypeLabel(String(transportType))}
+                                        </span>
+                                        {segment.departureTime && segment.arrivalTime && (
+                                          <span className="text-xs text-dark">
+                                            {formatTime(segment.departureTime)} - {formatTime(segment.arrivalTime)}
+                                          </span>
+                                        )}
+                                      </div>
+                                      {(segmentDuration > 0 || segmentPrice > 0) && (
+                                        <div className="text-xs text-dark">
+                                          {segmentDuration > 0 && formatDuration(segmentDuration)}
+                                          {segmentDuration > 0 && segmentPrice > 0 && ' • '}
+                                          {segmentPrice > 0 && formatPrice(segmentPrice)}
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
-                                  <div className="text-xs text-dark">
-                                    {formatDuration(segment.duration)} • {formatPrice(segment.price)}
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
+                                )
+                              })}
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        )}
 
-                      {/* Кнопка выбора */}
-                      <div className="flex justify-end pt-2">
-                        <button
-                          onClick={() => handleSelectRoute(route)}
-                          aria-label={`Выбрать маршрут из ${route.fromCity} в ${route.toCity}`}
-                          className="px-6 py-2 rounded-yakutia yakutia-transition font-semibold bg-primary hover:bg-primary-hover text-white"
-                        >
-                          Выбрать маршрут
-                        </button>
+                        {/* Кнопка выбора */}
+                        <div className="flex justify-end pt-2">
+                          <button
+                            onClick={() => handleSelectRoute(route)}
+                            aria-label={`Выбрать маршрут из ${route.fromCity} в ${route.toCity}`}
+                            className="px-6 py-2 rounded-yakutia yakutia-transition font-semibold bg-primary hover:bg-primary-hover text-white"
+                          >
+                            Выбрать маршрут
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </>

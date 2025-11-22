@@ -29,3 +29,4 @@ module.exports = {
   maxWorkers: 1, // Run E2E tests sequentially to avoid DB conflicts
 };
 
+
