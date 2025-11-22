@@ -722,6 +722,10 @@
     color: var(--color-dark-zone-text);
   }
 
+  .hover-header:hover .hover-header-icon {
+    color: var(--brand-primary-light);
+  }
+
   .hover-header-link {
     color: var(--color-dark-zone-text-secondary);
     transition: color var(--motion-duration-xs) var(--motion-ease-default);
@@ -834,7 +838,7 @@
   .tab-dark-active {
     background-color: var(--color-surface);
     color: var(--color-text-primary);
-    font-weight: var(--font-weight-medium);
+    font-weight: var(--font-weight-semibold);
   }
 
   /* Таб в светлой зоне (content) */

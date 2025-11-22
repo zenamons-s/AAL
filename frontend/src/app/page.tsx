@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import dynamic from 'next/dynamic'
-import { Header, Footer, NavigationTabs, AssistantButton } from '@/shared/ui'
+import { Header, NavigationTabs, AssistantButton } from '@/shared/ui'
 
 // Динамическая загрузка секций для уменьшения начального bundle size
 const RoutesSection = dynamic(
@@ -104,7 +104,7 @@ export default function Home() {
   // Показываем контент только после монтирования на клиенте
   if (!mounted) {
     return (
-      <div className="min-h-screen bg-background flex flex-col">
+      <div className="bg-background">
         <Header />
         <div className="bg-header-bg">
           <div className="container-main section-spacing-compact">
@@ -115,15 +115,14 @@ export default function Home() {
             </div>
           </div>
         </div>
-        <main className="container-main section-spacing-compact flex-1">
+        <main className="container-main section-spacing-compact">
         </main>
-        <Footer />
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="bg-background">
       <Header />
 
       {/* Тёмная верхняя зона: заголовок + табы */}
@@ -149,9 +148,9 @@ export default function Home() {
       </div>
 
       {/* Светлая контентная часть */}
-      <main className="container-main section-spacing-compact flex-1" aria-live="polite" aria-atomic="false">
+      <main className="container-main section-spacing-compact" aria-live="polite" aria-atomic="false">
         {/* Контент с плавной анимацией */}
-        <section aria-label={`Секция ${displaySection}`} className="relative min-h-screen">
+        <section aria-label={`Секция ${displaySection}`} className="relative">
           <div
             className={`${isTransitioning ? 'opacity-0 pointer-events-none' : 'animate-fade-in pointer-events-auto'} transition-opacity`}
           >
@@ -162,9 +161,6 @@ export default function Home() {
 
       {/* Анимированный мамонтёнок */}
       <AssistantButton />
-
-      {/* Footer */}
-      <Footer />
     </div>
   )
 }

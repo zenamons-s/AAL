@@ -4,7 +4,7 @@ import './globals.css'
 import { QueryProvider } from '@/shared/providers/query-provider'
 import { ErrorBoundaryProvider } from '@/shared/providers/error-boundary-provider'
 import { AppProviders } from '@/shared/providers/app-providers'
-import { OfflineNotification, WebVitalsTracker } from '@/shared/ui'
+import { OfflineNotification, WebVitalsTracker, Footer } from '@/shared/ui'
 
 const inter = Inter({
   subsets: ['latin', 'cyrillic'],
@@ -117,13 +117,16 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
       </head>
-      <body className="font-sans">
+      <body className="font-sans min-h-screen flex flex-col">
         <QueryProvider>
           <ErrorBoundaryProvider>
             <AppProviders>
               <WebVitalsTracker />
               <OfflineNotification />
-              {children}
+              <div className="flex flex-col flex-1">
+                {children}
+                <Footer />
+              </div>
             </AppProviders>
           </ErrorBoundaryProvider>
         </QueryProvider>

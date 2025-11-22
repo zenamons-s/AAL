@@ -45,10 +45,10 @@ export const NavigationTabs = memo(function NavigationTabs({ onSectionChange, ac
               className={`tab tab-dark ${isActive ? 'tab-dark-active' : ''}`}
             >
               <Icon
-                className="w-4 h-4 transition-fast"
-                color={isActive ? 'var(--color-primary)' : 'currentColor'}
+                className="w-4 h-4 transition-fast text-inverse"
+                color={isActive ? 'var(--brand-primary)' : 'var(--color-text-inverse)'}
               />
-              <span className="text-sm whitespace-nowrap font-normal">{tab.label}</span>
+              <span className="text-sm whitespace-nowrap font-medium text-inverse">{tab.label}</span>
             </button>
           )
         })}
