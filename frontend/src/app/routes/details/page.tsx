@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Header, Footer, ErrorBoundary } from '@/shared/ui';
+import { Header, ErrorBoundary } from '@/shared/ui';
 import { RouteDetailsView, RouteDetailsSkeleton, RouteDetailsError } from '@/modules/routes';
 import { adaptRouteToDetailsFormat } from '@/modules/routes/lib';
 import { IBuiltRoute, IRiskAssessment } from '@/modules/routes/domain';
@@ -61,35 +61,32 @@ function RouteDetailsContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background relative flex flex-col">
+      <div className="bg-background relative">
         <Header />
-        <main className="container-main section-spacing-compact relative z-10 flex-1" aria-label="Детали маршрута">
+        <main className="container-main section-spacing-compact relative z-10" aria-label="Детали маршрута">
           <RouteDetailsSkeleton />
         </main>
-        <Footer />
       </div>
     );
   }
 
   if (error || !routeData) {
     return (
-      <div className="min-h-screen bg-background relative flex flex-col">
+      <div className="bg-background relative">
         <Header />
-        <main className="container-main section-spacing-compact relative z-10 flex-1" aria-label="Детали маршрута">
+        <main className="container-main section-spacing-compact relative z-10" aria-label="Детали маршрута">
           <RouteDetailsError error={error || 'Маршрут не найден'} />
         </main>
-        <Footer />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background relative flex flex-col">
+    <div className="bg-background relative">
       <Header />
-      <main className="container-main section-spacing-compact relative z-10 flex-1">
+      <main className="container-main section-spacing-compact relative z-10">
         <RouteDetailsView data={routeData} />
       </main>
-      <Footer />
     </div>
   );
 }
@@ -98,12 +95,11 @@ export default function RouteDetailsPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-background relative flex flex-col">
+        <div className="bg-background relative">
           <Header />
-          <main className="container-main section-spacing-compact relative z-10 flex-1" aria-label="Детали маршрута">
+          <main className="container-main section-spacing-compact relative z-10" aria-label="Детали маршрута">
             <RouteDetailsSkeleton />
           </main>
-          <Footer />
         </div>
       }
     >

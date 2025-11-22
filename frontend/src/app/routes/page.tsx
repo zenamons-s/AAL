@@ -2,7 +2,7 @@
 
 import { Suspense, useMemo, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { Header, Footer, ErrorBoundary, DataModeBadge } from '@/shared/ui'
+import { Header, ErrorBoundary, DataModeBadge } from '@/shared/ui'
 import { RouteRiskBadge, useRoutesSearch } from '@/modules/routes'
 import { IBuiltRoute, IRiskAssessment, TransportType } from '@/modules/routes/domain'
 import { safeLocalStorage } from '@/shared/utils/storage'
@@ -94,10 +94,10 @@ function RoutesContent() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="bg-background">
       <Header />
 
-      <main className="container-main section-spacing-compact flex-1" aria-label="Результаты поиска маршрутов">
+      <main className="container-main section-spacing-compact" aria-label="Результаты поиска маршрутов">
         {/* Заголовок */}
         <div className="text-center mb-lg">
           <h1 className="text-2xl md:text-3xl lg:text-4xl font-medium mb-sm leading-tight text-balance text-heading">
@@ -401,8 +401,6 @@ function RoutesContent() {
             </div>
             )}
           </main>
-
-      <Footer />
     </div>
   )
 }
@@ -410,15 +408,14 @@ function RoutesContent() {
 export default function RoutesPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-background flex flex-col">
+      <div className="bg-background">
         <Header />
-        <main className="container-main section-spacing-compact flex-1">
+        <main className="container-main section-spacing-compact">
           <div className="text-center py-2xl">
             <div className="inline-block animate-spin rounded-full h-lg w-lg border border-primary border-t-transparent"></div>
             <p className="mt-md text-md text-secondary">Загрузка...</p>
           </div>
         </main>
-        <Footer />
       </div>
     }>
       <ErrorBoundary>
