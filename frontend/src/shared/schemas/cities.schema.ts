@@ -5,9 +5,26 @@ import { z } from 'zod'
  */
 export const CitiesResponseSchema = z.object({
   /**
-   * Список городов
+   * Список городов (из поля data)
    */
-  cities: z.array(z.string().min(1, 'Название города не может быть пустым')),
+  data: z.array(z.string().min(1, 'Название города не может быть пустым')),
+
+  /**
+   * Пагинация (опционально)
+   */
+  pagination: z.object({
+    page: z.number().optional(),
+    limit: z.number().optional(),
+    total: z.number().optional(),
+    totalPages: z.number().optional(),
+    hasNext: z.boolean().optional(),
+    hasPrev: z.boolean().optional(),
+  }).optional(),
+
+  /**
+   * Список городов (старое поле, опционально для обратной совместимости)
+   */
+  cities: z.array(z.string().min(1, 'Название города не может быть пустым')).optional(),
 
   /**
    * Режим данных (опционально)
@@ -17,7 +34,7 @@ export const CitiesResponseSchema = z.object({
   /**
    * Качество данных (опционально)
    */
-  quality: z.number().min(0).max(1).optional(),
+  quality: z.number().optional(),
 
   /**
    * Источник данных (опционально)
@@ -28,7 +45,16 @@ export const CitiesResponseSchema = z.object({
    * Время загрузки (опционально)
    */
   loadedAt: z.string().optional(),
-})
+
+  /**
+   * Статистика (опционально)
+   */
+  statistics: z.object({
+    realStopsCount: z.number().optional(),
+    virtualStopsCount: z.number().optional(),
+    totalStopsCount: z.number().optional(),
+  }).optional(),
+}).passthrough()
 
 /**
  * Тип для ответа API списка городов (выведенный из схемы)

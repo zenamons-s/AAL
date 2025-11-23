@@ -70,20 +70,25 @@ export function SearchForm() {
         setErrors({})
 
         // Формируем параметры для URL
+        // Всегда включаем все обязательные параметры: from, to, date, passengers
         const params = new URLSearchParams({
           from: validatedData.from,
           to: validatedData.to,
         })
 
-        // Добавляем дату, если она указана
-        if (validatedData.date) {
-          params.set('date', validatedData.date)
-        }
+        // Для date: если не выбрана, подставляем текущую дату в формате YYYY-MM-DD
+        const dateValue = validatedData.date || (() => {
+          const today = new Date()
+          const year = today.getFullYear()
+          const month = String(today.getMonth() + 1).padStart(2, '0')
+          const day = String(today.getDate()).padStart(2, '0')
+          return `${year}-${month}-${day}`
+        })()
+        params.set('date', dateValue)
 
-        // Добавляем количество пассажиров, если указано
-        if (validatedData.passengers) {
-          params.set('passengers', validatedData.passengers)
-        }
+        // Для passengers: если не выбрано, устанавливаем 1 по умолчанию
+        const passengersValue = validatedData.passengers || '1'
+        params.set('passengers', passengersValue)
 
         // Переход на страницу результатов поиска
         router.push(`/routes?${params.toString()}`)

@@ -14,7 +14,7 @@ export async function fetchCities(): Promise<string[]> {
     // Валидация ответа через Zod
     const validatedResponse = CitiesResponseSchema.parse(response);
     
-    return validatedResponse.cities || [];
+    return validatedResponse.data || [];
   } catch (error) {
     // Fallback на статический список если backend недоступен или валидация не прошла
     // Fallback список городов

@@ -2,7 +2,7 @@
 
 import { Suspense, useMemo, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { Header, ErrorBoundary, DataModeBadge } from '@/shared/ui'
+import { Header, ErrorBoundary } from '@/shared/ui'
 import { RouteRiskBadge, useRoutesSearch } from '@/modules/routes'
 import { IBuiltRoute, IRiskAssessment, TransportType } from '@/modules/routes/domain'
 import { safeLocalStorage } from '@/shared/utils/storage'
@@ -29,7 +29,7 @@ function RoutesContent() {
   const date = searchParams.get('date') || ''
   const passengers = searchParams.get('passengers') || '1'
 
-  const { routes, alternatives, dataMode, dataQuality, isLoading, error, errorCode } = useRoutesSearch({
+  const { routes, alternatives, isLoading, error, errorCode } = useRoutesSearch({
     from,
     to,
     date,
@@ -143,13 +143,6 @@ function RoutesContent() {
         {!isLoading && (!errorMessage || errorCode === 'ROUTES_NOT_FOUND') && (
           <div aria-live="polite" aria-atomic="true">
             <>
-            {/* Индикатор режима данных */}
-            {dataMode && (
-              <div className="mb-xl flex justify-center">
-                <DataModeBadge dataMode={dataMode} dataQuality={dataQuality} />
-              </div>
-            )}
-
             {/* Основные маршруты */}
             {routes && routes.length > 0 ? (
               <div className="space-y-md mb-xl">

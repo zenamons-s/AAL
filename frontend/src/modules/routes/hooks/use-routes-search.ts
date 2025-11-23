@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { fetchApi } from '@/shared/utils/api'
 import { IRouteBuilderResult, IBuiltRoute, IRiskAssessment } from '../domain/types'
 import { adaptBackendRoutesToFrontend } from '../utils/route-adapter'
+import { RouteSearchResponseSchema, RouteResultSchema, type RouteSearchResponse } from '../schemas/route.schema'
 
 /**
  * Структура ответа от бэкенда
@@ -38,8 +39,6 @@ interface BackendRouteSearchResponse {
     code: string
     message: string
   }
-  dataMode?: string
-  dataQuality?: number
   riskAssessment?: IRiskAssessment
 }
 
@@ -70,8 +69,6 @@ interface UseRoutesSearchParams {
 interface UseRoutesSearchResult {
   routes: Route[]
   alternatives: Route[]
-  dataMode?: string
-  dataQuality?: number
   isLoading: boolean
   error: Error | null
   errorCode?: string
@@ -104,8 +101,13 @@ export function useRoutesSearch({
         to: normalizedTo,
       })
 
+      // Нормализация и валидация date перед добавлением в URL
       if (date) {
-        params.set('date', date)
+        const normalizedDate = date.trim()
+        // Проверяем, что после trim строка не пустая и соответствует формату YYYY-MM-DD
+        if (normalizedDate && /^\d{4}-\d{2}-\d{2}$/.test(normalizedDate)) {
+          params.set('date', normalizedDate)
+        }
       }
 
       if (passengers && passengers !== '1') {
@@ -113,8 +115,18 @@ export function useRoutesSearch({
       }
 
       try {
-        const response = await fetchApi<BackendRouteSearchResponse>(`/routes/search?${params.toString()}`)
-        return response
+        const response = await fetchApi<unknown>(`/routes/search?${params.toString()}`)
+        
+        // Валидация ответа через Zod
+        const validationResult = RouteSearchResponseSchema.safeParse(response)
+        
+        if (!validationResult.success) {
+          const validationError = new Error('Неверный формат ответа от сервера') as Error & { code?: string }
+          validationError.code = 'INVALID_ROUTE_RESPONSE'
+          throw validationError
+        }
+        
+        return validationResult.data as RouteSearchResponse
       } catch (err) {
         // Для ROUTES_NOT_FOUND (404) возвращаем успешный ответ с пустым массивом
         // Это нормальный случай, когда маршруты не найдены
@@ -124,7 +136,9 @@ export function useRoutesSearch({
             success: true,
             routes: [],
             alternatives: [],
-          } as BackendRouteSearchResponse
+            executionTimeMs: 0,
+            graphAvailable: false,
+          } as RouteSearchResponse
         }
         // Для других ошибок пробрасываем дальше
         throw err
@@ -133,17 +147,35 @@ export function useRoutesSearch({
     enabled: Boolean(normalizedFrom && normalizedTo),
     staleTime: 2 * 60 * 1000, // 2 минуты - данные актуальны
     retry: (failureCount, error) => {
-      // Не повторяем запрос для ошибок 404 (STOPS_NOT_FOUND, ROUTES_NOT_FOUND)
       const apiError = error as ApiError
+      
+      // Не повторяем запрос для ошибок 404 (STOPS_NOT_FOUND, ROUTES_NOT_FOUND)
       if (apiError?.status === 404) {
         return false
       }
-      // Не повторяем для 503 (GRAPH_OUT_OF_SYNC) - это проблема сервера
-      if (apiError?.status === 503) {
+      
+      // Не повторяем для ошибок валидации ответа
+      if (apiError?.code === 'INVALID_ROUTE_RESPONSE') {
         return false
       }
-      // Повторяем для других ошибок (сеть, 500 и т.д.)
+      
+      // Для ошибок графа (503, GRAPH_NOT_AVAILABLE, GRAPH_OUT_OF_SYNC) - повторяем с задержкой
+      // Это позволяет дождаться готовности графа после старта backend в LIMITED MODE
+      if (apiError?.status === 503 || 
+          apiError?.code === 'GRAPH_NOT_AVAILABLE' || 
+          apiError?.code === 'GRAPH_OUT_OF_SYNC') {
+        // Повторяем до 5 раз с экспоненциальной задержкой (максимум ~30 секунд)
+        return failureCount < 5
+      }
+      
+      // Повторяем для других ошибок (сеть, 500 и т.д.) - максимум 2 попытки
       return failureCount < 2
+    },
+    retryDelay: (attemptIndex) => {
+      // Экспоненциальная задержка: 1s, 2s, 4s, 8s, 16s
+      // Максимальная задержка ограничена 10 секундами
+      const delay = Math.min(1000 * Math.pow(2, attemptIndex), 10000)
+      return delay
     },
   })
 
@@ -151,13 +183,55 @@ export function useRoutesSearch({
   // Проверяем, что ответ успешный и нет ошибки
   const hasValidData = data?.success && !data?.error && data?.routes
   
-  const adaptedRoutes = hasValidData && Array.isArray(data.routes) && data.routes.length > 0
-    ? adaptBackendRoutesToFrontend(data.routes, date, Number(passengers) || 1)
-    : []
+  // Проверка структуры перед адаптацией
+  let adaptedRoutes: IBuiltRoute[] = []
+  let adaptedAlternatives: IBuiltRoute[] = []
+  let processingError: Error | null = null
 
-  const adaptedAlternatives = hasValidData && Array.isArray(data.alternatives) && data.alternatives.length > 0
-    ? adaptBackendRoutesToFrontend(data.alternatives, date, Number(passengers) || 1)
-    : []
+  if (hasValidData) {
+    // Проверяем, что data.routes существует, это массив и имеет корректную структуру
+    if (!data.routes) {
+      processingError = new Error('Ответ сервера не содержит маршрутов') as Error & { code?: string }
+      processingError.code = 'INVALID_ROUTE_RESPONSE'
+    } else if (!Array.isArray(data.routes)) {
+      processingError = new Error('Маршруты должны быть массивом') as Error & { code?: string }
+      processingError.code = 'INVALID_ROUTE_RESPONSE'
+    } else {
+      // Проверяем структуру каждого маршрута через Zod
+      try {
+        for (const route of data.routes) {
+          const routeValidation = RouteResultSchema.safeParse(route)
+          if (!routeValidation.success) {
+            throw new Error('Неверная структура маршрута')
+          }
+        }
+        
+        // Если все проверки прошли, адаптируем маршруты
+        if (data.routes.length > 0) {
+          adaptedRoutes = adaptBackendRoutesToFrontend(data.routes, date, Number(passengers) || 1)
+        }
+      } catch (err) {
+        processingError = new Error('Ошибка при обработке маршрутов') as Error & { code?: string }
+        processingError.code = 'INVALID_ROUTE_RESPONSE'
+      }
+    }
+
+    // Проверяем альтернативные маршруты
+    if (data.alternatives && Array.isArray(data.alternatives) && data.alternatives.length > 0) {
+      try {
+        for (const altRoute of data.alternatives) {
+          const altValidation = RouteResultSchema.safeParse(altRoute)
+          if (!altValidation.success) {
+            throw new Error('Неверная структура альтернативного маршрута')
+          }
+        }
+        adaptedAlternatives = adaptBackendRoutesToFrontend(data.alternatives, date, Number(passengers) || 1)
+      } catch (err) {
+        // Ошибка в альтернативах не критична, просто не используем их
+        adaptedAlternatives = []
+      }
+    }
+  }
 
   // Добавляем riskAssessment к каждому маршруту
   const routes: Route[] = adaptedRoutes.map((route) => ({
@@ -171,13 +245,18 @@ export function useRoutesSearch({
   }))
 
   // Обработка ошибки из API ответа
-  // Если есть ошибка в ответе или React Query вернул ошибку, обрабатываем её
-  const apiError = data?.error
+  // Если есть ошибка в ответе, React Query вернул ошибку, или ошибка обработки
+  const apiError = processingError || (data?.error
     ? new Error(data.error.message || 'Ошибка при поиске маршрутов')
-    : (error as Error | null)
+    : (error as Error | null))
 
-  // Определяем код ошибки из перехваченной ошибки или из данных
-  const errorCode = (error as ApiError)?.code || data?.error?.code
+  // Для ошибок валидации создаем понятное сообщение
+  if (apiError && (apiError as ApiError).code === 'INVALID_ROUTE_RESPONSE') {
+    apiError.message = 'Неверный формат данных от сервера. Попробуйте обновить страницу.'
+  }
+
+  // Определяем код ошибки из перехваченной ошибки, из данных или из ошибки обработки
+  const errorCode = processingError?.code || (error as ApiError)?.code || data?.error?.code
 
   // Если есть ошибка, возвращаем пустые массивы
   const finalRoutes = apiError ? [] : routes
@@ -186,8 +265,6 @@ export function useRoutesSearch({
   return {
     routes: finalRoutes,
     alternatives: finalAlternatives,
-    dataMode: apiError ? undefined : data?.dataMode,
-    dataQuality: apiError ? undefined : data?.dataQuality,
     isLoading,
     error: apiError,
     errorCode,

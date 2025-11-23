@@ -79,3 +79,90 @@ export type RouteSearchParams = z.infer<typeof RouteSearchParamsSchema>
  */
 export type ValidatedRouteSearchParams = z.infer<typeof RouteSearchParamsWithValidationSchema>
 
+/**
+ * Схема валидации сегмента маршрута из backend
+ */
+export const RouteSegmentSchema = z.object({
+  fromStopId: z.string(),
+  toStopId: z.string(),
+  distance: z.number(),
+  duration: z.number(),
+  transportType: z.string(),
+  routeId: z.string().optional(),
+  price: z.number().optional(),
+  departureTime: z.string().optional(),
+  arrivalTime: z.string().optional(),
+})
+
+/**
+ * Схема валидации результата маршрута из backend
+ */
+export const RouteResultSchema = z.object({
+  segments: z.array(RouteSegmentSchema),
+  totalDistance: z.number(),
+  totalDuration: z.number(),
+  totalPrice: z.number(),
+  fromCity: z.string(),
+  toCity: z.string(),
+  departureDate: z.string(),
+})
+
+/**
+ * Схема валидации объекта ошибки
+ */
+const ErrorSchema = z.object({
+  code: z.string(),
+  message: z.string(),
+}).optional()
+
+/**
+ * Схема валидации ответа API для поиска маршрутов
+ * Соответствует реальному формату ответа backend
+ */
+export const RouteSearchResponseSchema = z.object({
+  /**
+   * Успешность запроса
+   */
+  success: z.boolean(),
+
+  /**
+   * Массив найденных маршрутов
+   */
+  routes: z.array(RouteResultSchema),
+
+  /**
+   * Альтернативные маршруты (опционально)
+   */
+  alternatives: z.array(RouteResultSchema).optional(),
+
+  /**
+   * Оценка рисков маршрута (опционально)
+   */
+  riskAssessment: z.any().optional(),
+
+  /**
+   * Время выполнения запроса в миллисекундах
+   */
+  executionTimeMs: z.number(),
+
+  /**
+   * Версия графа (опционально)
+   */
+  graphVersion: z.string().optional(),
+
+  /**
+   * Доступность графа
+   */
+  graphAvailable: z.boolean(),
+
+  /**
+   * Ошибка (опционально)
+   */
+  error: ErrorSchema,
+}).passthrough()
+
+/**
+ * Тип для ответа API поиска маршрутов (выведенный из схемы)
+ */
+export type RouteSearchResponse = z.infer<typeof RouteSearchResponseSchema>
+

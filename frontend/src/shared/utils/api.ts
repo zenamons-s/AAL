@@ -16,6 +16,18 @@ export async function fetchApi<T>(
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
   
+  // === ДИАГНОСТИЧЕСКИЕ ЛОГИ (временные) ===
+  console.log('=== fetchApi DIAGNOSTICS ===');
+  console.log('Environment:', typeof window !== 'undefined' ? 'CLIENT (CSR)' : 'SERVER (SSR)');
+  console.log('API_BASE_URL:', API_BASE_URL);
+  console.log('endpoint:', endpoint);
+  console.log('Final URL:', url);
+  console.log('process.env.NEXT_PUBLIC_API_URL:', process.env.NEXT_PUBLIC_API_URL || '(empty/undefined)');
+  console.log('process.env.API_URL:', process.env.API_URL || '(empty/undefined)');
+  console.log('typeof window:', typeof window !== 'undefined' ? 'defined (browser)' : 'undefined (server)');
+  console.log('================================');
+  // === КОНЕЦ ДИАГНОСТИКИ ===
+  
   try {
     const response = await fetch(url, {
       ...options,
@@ -58,12 +70,26 @@ export async function fetchApi<T>(
       throw new Error('Нет подключения к интернету. Проверьте ваше соединение.');
     }
     
-    if (error instanceof Error && error.message.includes('Failed to fetch')) {
-      throw new Error(`Не удалось подключиться к серверу. Проверьте, что backend запущен на ${API_BASE_URL.replace('/api/v1', '')}`);
-    }
+    // Проверяем, не является ли ошибка результатом блокировки CSP
     if (error instanceof Error) {
+      const errorMessage = error.message.toLowerCase();
+      if (errorMessage.includes('content security policy') || 
+          errorMessage.includes('csp') ||
+          errorMessage.includes('refused to connect')) {
+        throw new Error(`Запрос заблокирован политикой безопасности. Проверьте настройки Content-Security-Policy для разрешения подключений к ${API_BASE_URL.replace('/api/v1', '')}`);
+      }
+      
+      // Обрабатываем сетевые ошибки
+      if (error.message.includes('Failed to fetch') || 
+          error.message.includes('NetworkError') ||
+          error.message.includes('Network request failed')) {
+        throw new Error(`Не удалось подключиться к серверу. Проверьте, что backend запущен на ${API_BASE_URL.replace('/api/v1', '')}`);
+      }
+      
+      // Пробрасываем другие ошибки как есть
       throw error;
     }
+    
     throw new Error(`Network error: ${String(error)}`);
   }
 }
