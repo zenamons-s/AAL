@@ -6,28 +6,46 @@
 FROM node:18-alpine AS base
 
 # Устанавливаем только необходимые системные пакеты
-RUN apk add --no-cache libc6-compat
+# libc6-compat нужен для некоторых нативных модулей Node.js
+# wget нужен для healthchecks
+RUN apk add --no-cache libc6-compat wget
 
 WORKDIR /app
 
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # ============================================================================
-# DEPS - установка зависимостей (максимальное кеширование)
+# DEPS - установка всех зависимостей (dev + prod)
 # ============================================================================
 FROM base AS deps
 
 # Копируем ТОЛЬКО файлы зависимостей для максимального кеширования
 COPY package.json package-lock.json* ./
 
-# Устанавливаем зависимости с BuildKit cache mount
-# npm cache сохраняется между сборками, ускоряя повторные сборки
+# Устанавливаем все зависимости (включая devDependencies) с BuildKit cache mount
+# Используем npm ci если lock-файл существует, иначе npm install
 RUN --mount=type=cache,target=/root/.npm \
-    --mount=type=cache,target=/root/.npm/_cacache \
     if [ -f package-lock.json ]; then \
       npm ci --prefer-offline --no-audit --no-fund; \
     else \
-      npm install --prefer-offline --no-audit --no-fund --package-lock; \
+      npm install --prefer-offline --no-audit --no-fund; \
+    fi
+
+# ============================================================================
+# DEPS-PROD - только production зависимости (для standalone mode не нужен, но для консистентности)
+# ============================================================================
+FROM base AS deps-prod
+
+# Копируем ТОЛЬКО файлы зависимостей
+COPY package.json package-lock.json* ./
+
+# Устанавливаем только production зависимости
+# Используем npm ci если lock-файл существует, иначе npm install
+RUN --mount=type=cache,target=/root/.npm \
+    if [ -f package-lock.json ]; then \
+      npm ci --only=production --prefer-offline --no-audit --no-fund; \
+    else \
+      npm install --only=production --prefer-offline --no-audit --no-fund; \
     fi
 
 # ============================================================================
@@ -36,17 +54,22 @@ RUN --mount=type=cache,target=/root/.npm \
 FROM base AS builder
 
 ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
 
 # Копируем зависимости из deps stage
 COPY --from=deps /app/node_modules ./node_modules
 
-# Копируем только необходимые файлы для сборки (не все!)
+# Копируем конфигурационные файлы сначала (меняются реже)
 COPY package.json ./
 COPY next.config.js ./
 COPY postcss.config.js ./
 COPY tailwind.config.js ./
 COPY tsconfig.json ./
+
+# Копируем статические файлы (меняются реже)
 COPY public ./public
+
+# Копируем исходный код последним (меняется чаще)
 COPY src ./src
 
 # Собираем приложение с кэшированием .next/cache
@@ -65,13 +88,17 @@ ENV HOSTNAME="0.0.0.0"
 # Копируем зависимости
 COPY --from=deps /app/node_modules ./node_modules
 
-# Копируем только необходимые файлы для разработки
+# Копируем конфигурационные файлы сначала (меняются реже)
 COPY package.json ./
 COPY next.config.js ./
 COPY postcss.config.js ./
 COPY tailwind.config.js ./
 COPY tsconfig.json ./
+
+# Копируем статические файлы (меняются реже)
 COPY public ./public
+
+# Копируем исходный код последним (меняется чаще)
 COPY src ./src
 
 EXPOSE 3000
@@ -86,15 +113,13 @@ FROM base AS runner
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
+ENV NEXT_TELEMETRY_DISABLED=1
 
 # Создаем пользователя для безопасности
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
-# Копируем зависимости
-COPY --from=deps /app/node_modules ./node_modules
-
-# Копируем собранное приложение из standalone mode
+# Копируем собранное приложение из standalone mode (включает только необходимые node_modules)
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static

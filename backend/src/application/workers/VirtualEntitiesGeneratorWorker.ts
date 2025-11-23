@@ -54,28 +54,37 @@ export class VirtualEntitiesGeneratorWorker extends BaseBackgroundWorker {
   /**
    * Check if worker can run
    * 
-   * Only run if new dataset version exists without virtual entities.
+   * Worker should run whenever pipeline is triggered by DataInitialization.
+   * This method only checks minimal conditions required for worker execution.
+   * 
+   * All business logic about "should pipeline run" is handled by DataInitialization.checkDataCompleteness().
+   * This method does NOT check:
+   * - Whether virtual stops already exist (handled by DataInitialization)
+   * - Whether virtual routes already exist (handled by DataInitialization)
+   * - Whether data is complete (handled by DataInitialization)
+   * 
+   * This method ONLY checks:
+   * - Worker is not already running
+   * - Dataset exists (required for worker to function)
    */
   public async canRun(): Promise<boolean> {
+    // Check if worker is already running
     const isRunning = await super.canRun();
     if (!isRunning) {
+      this.log('INFO', 'Worker is already running - skipping');
       return false;
     }
 
-    // Check if latest dataset has virtual entities
+    // Check if dataset exists (minimal requirement for worker to function)
     const latestDataset = await this.datasetRepository.getLatestDataset();
     if (!latestDataset) {
-      this.log('INFO', 'No dataset found - cannot run');
+      this.log('INFO', 'No dataset found - cannot run (dataset is required for virtual entities generation)');
       return false;
     }
 
-    // Check if virtual stops already exist for this dataset
-    const virtualStopsCount = await this.stopRepository.countVirtualStops();
-    if (virtualStopsCount > 0) {
-      this.log('INFO', `Virtual entities already exist (${virtualStopsCount} stops) - skipping`);
-      return false;
-    }
-
+    // Worker can run - all minimal conditions are met
+    // DataInitialization.checkDataCompleteness() has already determined that pipeline should run
+    this.log('INFO', `Worker can run - dataset exists (${latestDataset.version})`);
     return true;
   }
 
@@ -121,10 +130,9 @@ export class VirtualEntitiesGeneratorWorker extends BaseBackgroundWorker {
           .map(stop => normalizeCityName(stop.cityId!))
       );
 
-      // Filter cities: must be in unified reference, must be key city, must not have real stops
+      // Filter cities: must be in unified reference, must not have real stops
       const missingCities = allCities
         .filter(city => 
-          city.isKeyCity && 
           !citiesWithStops.has(normalizeCityName(city.name))
         )
         .map(city => city.name);
@@ -490,10 +498,88 @@ export class VirtualEntitiesGeneratorWorker extends BaseBackgroundWorker {
 
   /**
    * Generate stable ID from city name or stop IDs
+   * Ensures non-empty result to prevent invalid IDs like "virtual-stop----------------"
+   * 
+   * Handles Cyrillic characters correctly by using normalizeCityName first,
+   * then converting to safe ASCII characters for ID generation.
    */
   private generateStableId(...parts: string[]): string {
-    const input = parts.join('-');
-    return input.replace(/[^a-z0-9]/gi, '-').toLowerCase();
+    // Filter out empty parts and normalize
+    const validParts = parts
+      .filter(part => part && part.trim().length > 0)
+      .map(part => part.trim());
+    
+    if (validParts.length === 0) {
+      throw new Error('Cannot generate stable ID from empty parts');
+    }
+    
+    // Normalize each part using city normalizer (handles Cyrillic correctly)
+    const normalizedParts = validParts.map(part => {
+      // First normalize using city normalizer (handles Cyrillic, ё->е, etc.)
+      const cityNormalized = normalizeCityName(part);
+      
+      // Then convert to safe ID format: replace spaces and special chars with dashes
+      // Keep only alphanumeric and dashes, but preserve Cyrillic characters
+      let safeId = cityNormalized
+        .replace(/\s+/g, '-')           // Spaces to dashes
+        .replace(/[^\wа-яё-]/gi, '-')   // Non-word chars (except Cyrillic) to dashes
+        .replace(/-+/g, '-')             // Multiple dashes to single
+        .replace(/^-|-$/g, '');         // Trim leading/trailing dashes
+      
+      // If after normalization we still have content, use it
+      // Otherwise, create a fallback from original part
+      if (!safeId || safeId.length === 0) {
+        // Fallback: use first letters/numbers from original part
+        safeId = part
+          .replace(/[^\wа-яё]/gi, '')    // Keep only word chars and Cyrillic
+          .toLowerCase()
+          .substring(0, 20);             // Limit length
+      }
+      
+      return safeId;
+    });
+    
+    // Filter out any parts that became empty after normalization
+    const finalParts = normalizedParts.filter(p => p && p.length > 0);
+    
+    if (finalParts.length === 0) {
+      // Last resort: use hash-like ID from original parts
+      const fallbackId = validParts
+        .join('-')
+        .replace(/[^\wа-яё]/gi, '')
+        .toLowerCase()
+        .substring(0, 30);
+      
+      if (!fallbackId || fallbackId.length === 0) {
+        throw new Error(`Cannot generate stable ID from parts: ${parts.join(', ')}`);
+      }
+      
+      return fallbackId;
+    }
+    
+    // Join parts and ensure final ID is valid
+    const finalId = finalParts.join('-')
+      .replace(/-+/g, '-')               // Multiple dashes to single
+      .replace(/^-|-$/g, '')             // Trim leading/trailing dashes
+      .toLowerCase();
+    
+    // Final validation: ensure ID is not empty and doesn't contain only dashes
+    if (!finalId || finalId.length === 0 || /^-+$/.test(finalId)) {
+      // Generate fallback ID using first characters from each part
+      const fallbackId = validParts
+        .map(p => p.substring(0, 5).replace(/[^\wа-яё]/gi, '').toLowerCase())
+        .filter(p => p.length > 0)
+        .join('-')
+        .substring(0, 50);
+      
+      if (!fallbackId || fallbackId.length === 0) {
+        throw new Error(`Generated empty ID from parts: ${parts.join(', ')}`);
+      }
+      
+      return fallbackId;
+    }
+    
+    return finalId;
   }
 
   /**

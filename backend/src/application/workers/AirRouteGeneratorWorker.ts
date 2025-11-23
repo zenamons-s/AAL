@@ -24,7 +24,7 @@ import type { IDatasetRepository } from '../../domain/repositories/IDatasetRepos
 import { Route, type RouteStop } from '../../domain/entities/Route';
 import { Flight } from '../../domain/entities/Flight';
 import { normalizeCityName } from '../../shared/utils/city-normalizer';
-import { getAllFederalCities } from '../../shared/utils/unified-cities-loader';
+import { getAllFederalCities, isCityInUnifiedReference } from '../../shared/utils/unified-cities-loader';
 
 /**
  * Hub city (Yakutsk)
@@ -121,14 +121,35 @@ export class AirRouteGeneratorWorker extends BaseBackgroundWorker {
 
         // Find stops in federal city
         const cityStops = await this.findCityStops(federalCity.name, federalCity.normalizedName);
-        if (cityStops.length === 0) {
-          this.log('WARN', `City "${federalCity.name}" has no stops - skipping`);
+        
+        // Filter invalid stops
+        const validCityStops = this.filterValidStops(cityStops, federalCity.name);
+        
+        if (validCityStops.length === 0) {
+          this.log('WARN', `City "${federalCity.name}" has no valid stops after filtering - skipping`);
           continue;
         }
 
+        this.log('INFO', `City "${federalCity.name}" has ${validCityStops.length} valid stops`);
+
         // Find airport stop in federal city (prefer airport, fallback to any stop)
-        const cityAirportStop = cityStops.find((stop) => stop.isAirport) || cityStops[0];
+        const cityAirportStop = validCityStops.find((stop) => stop.isAirport) || validCityStops[0];
+        
+        // Validate that stop exists in database
+        const stopExists = await this.validateStopExists(cityAirportStop.id);
+        if (!stopExists) {
+          this.log('WARN', `Stop ${cityAirportStop.id} for city "${federalCity.name}" does not exist in database - skipping`);
+          continue;
+        }
+
         this.log('INFO', `  Using stop: ${cityAirportStop.name} (${cityAirportStop.id})`);
+
+        // Validate hub stop exists
+        const hubStopExists = await this.validateStopExists(hubAirportStop.id);
+        if (!hubStopExists) {
+          this.log('WARN', `Hub stop ${hubAirportStop.id} does not exist in database - skipping city "${federalCity.name}"`);
+          continue;
+        }
 
         // Check if route already exists (both directions)
         const existingRouteForward = await this.routeRepository.findDirectRoutes(
@@ -230,6 +251,90 @@ export class AirRouteGeneratorWorker extends BaseBackgroundWorker {
     // Try virtual stops
     const virtualStops = await this.stopRepository.getVirtualStopsByCity(normalizedCityName);
     return virtualStops;
+  }
+
+  /**
+   * Filter valid stops for route generation
+   * 
+   * Removes stops that:
+   * - Have empty cityId
+   * - Have cityId not in unified reference
+   * - Have invalid ID (virtual-stop-% with empty cityId)
+   * - Have invalid ID format (3+ consecutive dashes)
+   * 
+   * @param stops - Array of stops to filter
+   * @param cityName - City name for logging
+   * @returns Array of valid stops
+   */
+  private filterValidStops(stops: any[], cityName: string): any[] {
+    const validStops: any[] = [];
+
+    for (const stop of stops) {
+      let isValid = true;
+      let reason = '';
+
+      // Check 1: Empty cityId
+      if (!stop.cityId || stop.cityId.trim() === '') {
+        isValid = false;
+        reason = 'empty cityId';
+      }
+
+      // Check 2: Invalid ID format (3+ consecutive dashes)
+      if (isValid && stop.id.match(/-{3,}/)) {
+        isValid = false;
+        reason = 'invalid id format (3+ consecutive dashes)';
+      }
+
+      // Check 3: virtual-stop-% with empty cityId
+      if (isValid && stop.id.startsWith('virtual-stop-') && (!stop.cityId || stop.cityId.trim() === '')) {
+        isValid = false;
+        reason = 'virtual-stop with empty cityId';
+      }
+
+      // Check 4: cityId not in unified reference
+      if (isValid && stop.cityId) {
+        const normalizedCityId = normalizeCityName(stop.cityId);
+        if (!isCityInUnifiedReference(normalizedCityId)) {
+          isValid = false;
+          reason = `cityId not in unified reference: ${stop.cityId}`;
+        }
+      }
+
+      if (isValid) {
+        validStops.push(stop);
+      } else {
+        this.log('WARN', `Excluding stop ${stop.id} for city "${cityName}", reason: ${reason}`);
+      }
+    }
+
+    return validStops;
+  }
+
+  /**
+   * Validate that stop exists in database
+   * 
+   * @param stopId - Stop ID to validate
+   * @returns True if stop exists, false otherwise
+   */
+  private async validateStopExists(stopId: string): Promise<boolean> {
+    try {
+      // Check if stop exists in real stops
+      const realStop = await this.stopRepository.findRealStopById(stopId);
+      if (realStop) {
+        return true;
+      }
+
+      // Check if stop exists in virtual stops
+      const virtualStop = await this.stopRepository.findVirtualStopById(stopId);
+      if (virtualStop) {
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      this.log('ERROR', `Error validating stop ${stopId}: ${error}`);
+      return false;
+    }
   }
 
   /**

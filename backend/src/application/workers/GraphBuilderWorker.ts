@@ -27,7 +27,7 @@ import type { IGraphRepository, GraphNode, GraphNeighbor } from '../../domain/re
 import { Graph } from '../../domain/entities/Graph';
 import type { TransportType } from '../../domain/entities/Route';
 import { validateGraphStructure, validateTransferEdges, validateFerryEdges } from '../../shared/validators/graph-validator';
-import { getAllFederalCities } from '../../shared/utils/unified-cities-loader';
+import { getAllFederalCities, isCityInUnifiedReference } from '../../shared/utils/unified-cities-loader';
 import { normalizeCityName } from '../../shared/utils/city-normalizer';
 
 /**
@@ -110,6 +110,40 @@ export class GraphBuilderWorker extends BaseBackgroundWorker {
       this.log('INFO', `Loaded ${allStops.length} stops (${realStops.length} real, ${virtualStops.length} virtual)`);
 
       // ====================================================================
+      // Step 1.1: Filter Invalid Stops
+      // ====================================================================
+      this.log('INFO', 'Step 1.1: Filtering invalid stops...');
+      
+      const { validStops, filteredCount, filteredReasons } = this.filterInvalidStops(allStops);
+      
+      if (filteredCount > 0) {
+        this.log('WARN', `Filtered out ${filteredCount} invalid stops:`);
+        filteredReasons.forEach(({ stopId, reason }) => {
+          this.log('WARN', `  ⚠️  Removing invalid stop: ${stopId} — reason: ${reason}`);
+        });
+      }
+      
+      this.log('INFO', `Valid stops after filtering: ${validStops.length}`);
+      
+      // Check if we have enough stops to build a graph
+      const MIN_STOPS_FOR_GRAPH = 10;
+      const MIN_STOPS_WARNING = 30;
+      
+      if (validStops.length < MIN_STOPS_FOR_GRAPH) {
+        return {
+          success: false,
+          workerId: this.workerId,
+          executionTimeMs: Date.now() - startTime,
+          message: `Cannot build graph: only ${validStops.length} valid stops (minimum ${MIN_STOPS_FOR_GRAPH} required)`,
+          error: 'INSUFFICIENT_STOPS',
+        };
+      }
+      
+      if (validStops.length < MIN_STOPS_WARNING) {
+        this.log('WARN', `Warning: Only ${validStops.length} valid stops (recommended: ${MIN_STOPS_WARNING}+). Graph may be incomplete.`);
+      }
+
+      // ====================================================================
       // Step 2: Load All Routes
       // ====================================================================
       this.log('INFO', 'Step 2: Loading routes from PostgreSQL...');
@@ -166,8 +200,9 @@ export class GraphBuilderWorker extends BaseBackgroundWorker {
       });
 
       // Convert stops to compatible format
-      const stopsForGraph = allStops.map(stop => ({
+      const stopsForGraph = validStops.map(stop => ({
         id: stop.id,
+        name: 'name' in stop ? stop.name : undefined,
         latitude: stop.latitude,
         longitude: stop.longitude,
         cityId: stop.cityId,
@@ -207,6 +242,30 @@ export class GraphBuilderWorker extends BaseBackgroundWorker {
       }
       
       this.log('INFO', `Graph structure validation passed. Stats: ${JSON.stringify(graphValidation.stats)}`);
+      
+      // Additional validation: check graph size requirements
+      if (nodes.length < 36) {
+        this.log('WARN', `Graph has fewer nodes than expected: ${nodes.length} < 36`);
+      }
+      if (edges.length < 160) {
+        this.log('WARN', `Graph has fewer edges than expected: ${edges.length} < 160`);
+      }
+      
+      // Check for Verkhoyansk and Mirny in graph
+      const verkhoyanskNode = nodes.find(n => n.cityId === 'верхоянск' || n.id.includes('верхоянск'));
+      const mirnyNode = nodes.find(n => n.cityId === 'мирный' || n.id.includes('мирный'));
+      
+      if (!verkhoyanskNode) {
+        this.log('WARN', 'Verkhoyansk (Верхоянск) not found in graph nodes');
+      } else {
+        this.log('INFO', `Verkhoyansk found in graph: ${verkhoyanskNode.id}`);
+      }
+      
+      if (!mirnyNode) {
+        this.log('WARN', 'Mirny (Мирный) not found in graph nodes');
+      } else {
+        this.log('INFO', `Mirny found in graph: ${mirnyNode.id}`);
+      }
 
       // ====================================================================
       // Step 4.2: Validate Transfer Edges
@@ -377,10 +436,113 @@ export class GraphBuilderWorker extends BaseBackgroundWorker {
   }
 
   /**
+   * Filter invalid stops before building graph
+   * 
+   * Removes stops that:
+   * - Have invalid IDs (3+ consecutive dashes, virtual-stop----------------)
+   * - Have empty cityId
+   * - Have empty name
+   * - Have cityId not in unified reference
+   * - Are ferry stops without proper metadata.type = 'ferry_terminal'
+   * 
+   * @param stops - Array of stops to filter (RealStop | VirtualStop)
+   * @returns Object with valid stops, filtered count, and reasons
+   */
+  private filterInvalidStops<T extends { id: string; name?: string; cityId?: string; latitude: number; longitude: number; isAirport?: boolean; isRailwayStation?: boolean; metadata?: Record<string, unknown> }>(
+    stops: T[]
+  ): {
+    validStops: T[];
+    filteredCount: number;
+    filteredReasons: Array<{ stopId: string; reason: string }>;
+  } {
+    const validStops: T[] = [];
+    const filteredReasons: Array<{ stopId: string; reason: string }> = [];
+
+    for (const stop of stops) {
+      let isValid = true;
+      let reason = '';
+
+      // Check 1: Invalid ID format (3+ consecutive dashes)
+      if (stop.id.match(/-{3,}/)) {
+        isValid = false;
+        reason = 'invalid id format (3+ consecutive dashes)';
+      }
+
+      // Check 2: Specific invalid case: virtual-stop----------------
+      if (stop.id === 'virtual-stop----------------' || stop.id.match(/^virtual-stop-+$/)) {
+        isValid = false;
+        reason = 'invalid id format (empty city name)';
+      }
+
+      // Check 3: Empty cityId
+      if (isValid && (!stop.cityId || stop.cityId.trim() === '')) {
+        isValid = false;
+        reason = 'empty cityId';
+      }
+
+      // Check 4: Empty name
+      if (isValid && (!stop.name || stop.name.trim() === '')) {
+        isValid = false;
+        reason = 'empty name';
+      }
+
+      // Check 5: cityId not in unified reference
+      if (isValid && stop.cityId) {
+        const normalizedCityId = normalizeCityName(stop.cityId);
+        if (!isCityInUnifiedReference(normalizedCityId)) {
+          isValid = false;
+          reason = `cityId not in unified reference: ${stop.cityId}`;
+        }
+      }
+
+      // Check 6: Ferry stop without proper metadata
+      if (isValid) {
+        const stopIdLower = stop.id.toLowerCase();
+        const stopNameLower = stop.name?.toLowerCase() || '';
+        const isFerryStop = 
+          stopIdLower.includes('паром') ||
+          stopIdLower.includes('ferry') ||
+          stopIdLower.includes('переправа') ||
+          stopIdLower.includes('пристань') ||
+          stopNameLower.includes('паром') ||
+          stopNameLower.includes('ferry') ||
+          stopNameLower.includes('переправа') ||
+          stopNameLower.includes('пристань');
+
+        if (isFerryStop && stop.metadata?.type !== 'ferry_terminal') {
+          isValid = false;
+          reason = 'ferry stop missing terminal tag';
+        }
+      }
+
+      // Check 7: Invalid metadata.type (if present)
+      if (isValid && stop.metadata?.type) {
+        const validTypes = ['ferry_terminal'];
+        if (typeof stop.metadata.type === 'string' && !validTypes.includes(stop.metadata.type)) {
+          // Allow other metadata types, but log if it's an unknown type
+          // This is a warning, not a blocking error
+        }
+      }
+
+      if (isValid) {
+        validStops.push(stop);
+      } else {
+        filteredReasons.push({ stopId: stop.id, reason });
+      }
+    }
+
+    return {
+      validStops,
+      filteredCount: filteredReasons.length,
+      filteredReasons,
+    };
+  }
+
+  /**
    * Build graph structure from data
    */
   private buildGraphStructure(
-    stops: Array<{ id: string; latitude: number; longitude: number; cityId?: string; isAirport?: boolean; isRailwayStation?: boolean; metadata?: Record<string, unknown> }>,
+    stops: Array<{ id: string; name?: string; latitude: number; longitude: number; cityId?: string; isAirport?: boolean; isRailwayStation?: boolean; metadata?: Record<string, unknown> }>,
     routes: Array<{ id: string; fromStopId: string; toStopId: string; stopsSequence: Array<{ stopId: string }>; transportType: string; durationMinutes?: number; distanceKm?: number; metadata?: Record<string, unknown> }>,
     flights: Array<{ id: string; routeId?: string; fromStopId: string; toStopId: string; departureTime: string; arrivalTime: string; isVirtual?: boolean }>
   ): { nodes: GraphNode[]; edges: GraphEdge[] } {
@@ -394,10 +556,11 @@ export class GraphBuilderWorker extends BaseBackgroundWorker {
     }));
 
     // Build stop lookup map for transfer calculation
-    const stopMap = new Map<string, { id: string; cityId?: string; isAirport?: boolean; isRailwayStation?: boolean; metadata?: Record<string, unknown> }>();
+    const stopMap = new Map<string, { id: string; name?: string; cityId?: string; isAirport?: boolean; isRailwayStation?: boolean; metadata?: Record<string, unknown> }>();
     for (const stop of stops) {
       stopMap.set(stop.id, {
         id: stop.id,
+        name: stop.name,
         cityId: stop.cityId,
         isAirport: stop.isAirport,
         isRailwayStation: stop.isRailwayStation,
@@ -412,40 +575,68 @@ export class GraphBuilderWorker extends BaseBackgroundWorker {
       const edgeKey = `${flight.fromStopId}-${flight.toStopId}-${flight.routeId || 'direct'}`;
       
       if (!edgesMap.has(edgeKey)) {
-        // Calculate weight (duration) from flight times (HH:MM format)
-        let weight = 180; // Default 3 hours
-        
-        if (flight.departureTime && flight.arrivalTime) {
-          try {
-            const depParts = flight.departureTime.split(':');
-            const arrParts = flight.arrivalTime.split(':');
-            
-            if (depParts.length === 2 && arrParts.length === 2) {
-              const depMinutes = parseInt(depParts[0], 10) * 60 + parseInt(depParts[1], 10);
-              const arrMinutes = parseInt(arrParts[0], 10) * 60 + parseInt(arrParts[1], 10);
-              
-              let durationMinutes = arrMinutes - depMinutes;
-              // Handle overnight flights
-              if (durationMinutes < 0) {
-                durationMinutes += 24 * 60; // Add 24 hours
-              }
-              
-              if (durationMinutes > 0 && durationMinutes < 10000) {
-                weight = durationMinutes;
-              }
-            }
-          } catch {
-            // Use default weight if parsing fails
-          }
-        }
-
-        // Find route info
+        // Find route info first to check if it's a ferry route
         const route = routes.find(r => r.id === flight.routeId);
 
-        // Calculate weight for ferry routes with seasonality
-        let finalWeight = weight;
-        if (route?.transportType === 'FERRY' && route.metadata?.ferrySchedule) {
-          finalWeight = this.calculateFerryWeight(route.durationMinutes || 20, route.metadata.ferrySchedule as { summer?: { frequency: string }; winter?: { frequency: string } });
+        // For ferry routes: validate that both stops are ferry terminals
+        let finalWeight: number;
+        let finalTransportType = route?.transportType as TransportType | undefined;
+        
+        if (route?.transportType === 'FERRY') {
+          // Find stops to check if they are ferry terminals
+          const fromStop = stops.find(s => s.id === flight.fromStopId);
+          const toStop = stops.find(s => s.id === flight.toStopId);
+          
+          const fromIsFerry = fromStop ? this.getStopType(fromStop) === 'ferry_terminal' : false;
+          const toIsFerry = toStop ? this.getStopType(toStop) === 'ferry_terminal' : false;
+          
+          // Ferry edge is only valid if both stops are ferry terminals
+          if (!fromIsFerry || !toIsFerry) {
+            // Invalid ferry route: one or both stops are not ferry terminals
+            // Skip this edge or change transport type (prefer skipping)
+            this.log('WARN', `Skipping invalid ferry edge: ${flight.fromStopId} -> ${flight.toStopId} (stops are not ferry terminals)`);
+            continue; // Skip this edge entirely
+          }
+          
+          // Valid ferry route: use route.durationMinutes (20 minutes) + waiting time from calculateFerryWeight()
+          if (route.metadata?.ferrySchedule) {
+            const baseDuration = route.durationMinutes || 20;
+            finalWeight = this.calculateFerryWeight(baseDuration, route.metadata.ferrySchedule as { summer?: { frequency: string }; winter?: { frequency: string } });
+          } else {
+            // Ferry route without schedule: use default weight (20-65 minutes)
+            finalWeight = route.durationMinutes || 20;
+            if (finalWeight < 20) finalWeight = 20;
+            if (finalWeight > 65) finalWeight = 65;
+          }
+        } else {
+          // Non-ferry route: calculate weight from flight times (HH:MM format)
+          let weight = 180; // Default 3 hours
+          
+          if (flight.departureTime && flight.arrivalTime) {
+            try {
+              const depParts = flight.departureTime.split(':');
+              const arrParts = flight.arrivalTime.split(':');
+              
+              if (depParts.length === 2 && arrParts.length === 2) {
+                const depMinutes = parseInt(depParts[0], 10) * 60 + parseInt(depParts[1], 10);
+                const arrMinutes = parseInt(arrParts[0], 10) * 60 + parseInt(arrParts[1], 10);
+                
+                let durationMinutes = arrMinutes - depMinutes;
+                // Handle overnight flights
+                if (durationMinutes < 0) {
+                  durationMinutes += 24 * 60; // Add 24 hours
+                }
+                
+                if (durationMinutes > 0 && durationMinutes < 10000) {
+                  weight = durationMinutes;
+                }
+              }
+            } catch {
+              // Use default weight if parsing fails
+            }
+          }
+          
+          finalWeight = weight;
         }
 
         edgesMap.set(edgeKey, {
@@ -453,7 +644,7 @@ export class GraphBuilderWorker extends BaseBackgroundWorker {
           toStopId: flight.toStopId,
           weight: finalWeight,
           distance: route?.distanceKm,
-          transportType: route?.transportType as TransportType | undefined,
+          transportType: finalTransportType,
           routeId: flight.routeId,
         });
       }
@@ -469,22 +660,55 @@ export class GraphBuilderWorker extends BaseBackgroundWorker {
           const edgeKey = `${fromStopId}-${toStopId}-${route.id}`;
           
           if (!edgesMap.has(edgeKey)) {
-            // Use route duration or estimate
-            let weight = route.durationMinutes || 60; // Default 1 hour
-            
-            // Calculate weight for ferry routes with seasonality
-            if (route.transportType === 'FERRY' && route.metadata?.ferrySchedule) {
-              weight = this.calculateFerryWeight(route.durationMinutes || 20, route.metadata.ferrySchedule as { summer?: { frequency: string }; winter?: { frequency: string } });
+            // For ferry routes: validate that both stops are ferry terminals
+            if (route.transportType === 'FERRY') {
+              // Find stops to check if they are ferry terminals
+              const fromStop = stops.find(s => s.id === fromStopId);
+              const toStop = stops.find(s => s.id === toStopId);
+              
+              const fromIsFerry = fromStop ? this.getStopType(fromStop) === 'ferry_terminal' : false;
+              const toIsFerry = toStop ? this.getStopType(toStop) === 'ferry_terminal' : false;
+              
+              // Ferry edge is only valid if both stops are ferry terminals
+              if (!fromIsFerry || !toIsFerry) {
+                // Invalid ferry route: one or both stops are not ferry terminals
+                // Skip this edge
+                this.log('WARN', `Skipping invalid ferry route edge: ${fromStopId} -> ${toStopId} (stops are not ferry terminals)`);
+                continue; // Skip this edge entirely
+              }
+              
+              // Valid ferry route: calculate weight with seasonality
+              let weight: number;
+              if (route.metadata?.ferrySchedule) {
+                weight = this.calculateFerryWeight(route.durationMinutes || 20, route.metadata.ferrySchedule as { summer?: { frequency: string }; winter?: { frequency: string } });
+              } else {
+                // Ferry route without schedule: use default weight (20-65 minutes)
+                weight = route.durationMinutes || 20;
+                if (weight < 20) weight = 20;
+                if (weight > 65) weight = 65;
+              }
+              
+              edgesMap.set(edgeKey, {
+                fromStopId,
+                toStopId,
+                weight,
+                distance: route.distanceKm,
+                transportType: route.transportType,
+                routeId: route.id,
+              });
+            } else {
+              // Non-ferry route: use route duration or estimate
+              const weight = route.durationMinutes || 60; // Default 1 hour
+              
+              edgesMap.set(edgeKey, {
+                fromStopId,
+                toStopId,
+                weight,
+                distance: route.distanceKm,
+                transportType: route.transportType,
+                routeId: route.id,
+              });
             }
-            
-            edgesMap.set(edgeKey, {
-              fromStopId,
-              toStopId,
-              weight,
-              distance: route.distanceKm,
-              transportType: route.transportType,
-              routeId: route.id,
-            });
           }
         }
       }
@@ -571,8 +795,8 @@ export class GraphBuilderWorker extends BaseBackgroundWorker {
    * @returns Transfer weight in minutes
    */
   private calculateTransferWeight(
-    stop1: { id: string; cityId?: string; isAirport?: boolean; isRailwayStation?: boolean; metadata?: Record<string, unknown> },
-    stop2: { id: string; cityId?: string; isAirport?: boolean; isRailwayStation?: boolean; metadata?: Record<string, unknown> }
+    stop1: { id: string; name?: string; cityId?: string; isAirport?: boolean; isRailwayStation?: boolean; metadata?: Record<string, unknown> },
+    stop2: { id: string; name?: string; cityId?: string; isAirport?: boolean; isRailwayStation?: boolean; metadata?: Record<string, unknown> }
   ): number {
     // Determine stop types
     const stop1Type = this.getStopType(stop1);
@@ -623,13 +847,25 @@ export class GraphBuilderWorker extends BaseBackgroundWorker {
    * @param stop - Stop to analyze
    * @returns Stop type
    */
-  private getStopType(stop: { id: string; cityId?: string; isAirport?: boolean; isRailwayStation?: boolean; metadata?: Record<string, unknown> }): 'airport' | 'ground' | 'ferry_terminal' {
+  private getStopType(stop: { id: string; name?: string; cityId?: string; isAirport?: boolean; isRailwayStation?: boolean; metadata?: Record<string, unknown> }): 'airport' | 'ground' | 'ferry_terminal' {
+    // Safety check: stop-027 and stop-028 are always ferry terminals
+    // If metadata is missing or empty, treat them as ferry terminals locally (without modifying DB)
+    if ((stop.id === 'stop-027' || stop.id === 'stop-028') && (!stop.metadata || Object.keys(stop.metadata).length === 0)) {
+      return 'ferry_terminal';
+    }
+    
     // Check if it's a ferry terminal
+    const stopIdLower = stop.id.toLowerCase();
+    const stopNameLower = stop.name?.toLowerCase() || '';
     if (stop.metadata?.type === 'ferry_terminal' || 
-        stop.id.toLowerCase().includes('паром') || 
-        stop.id.toLowerCase().includes('ferry') ||
-        stop.id.toLowerCase().includes('переправа') ||
-        stop.id.toLowerCase().includes('пристань')) {
+        stopIdLower.includes('паром') || 
+        stopIdLower.includes('ferry') ||
+        stopIdLower.includes('переправа') ||
+        stopIdLower.includes('пристань') ||
+        stopNameLower.includes('паром') ||
+        stopNameLower.includes('ferry') ||
+        stopNameLower.includes('переправа') ||
+        stopNameLower.includes('пристань')) {
       return 'ferry_terminal';
     }
 

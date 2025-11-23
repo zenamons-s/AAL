@@ -1,4 +1,4 @@
-# [DIAGNOSTIC REPORT]
+d# [DIAGNOSTIC REPORT]
 **Дата:** 2025-01-XX  
 **Цель:** Диагностика отсутствия маршрутов (Верхоянск → Мирный), virtual stops, старых графов и ошибок pipeline
 

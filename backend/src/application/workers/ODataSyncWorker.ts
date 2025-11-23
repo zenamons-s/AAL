@@ -326,6 +326,15 @@ export class ODataSyncWorker extends BaseBackgroundWorker {
         const isAirport = stopData.type === 'airport' || stopData.name?.toLowerCase().includes('аэропорт');
         const isRailwayStation = stopData.type === 'railway' || stopData.name?.toLowerCase().includes('вокзал');
 
+        // Build metadata: include address if present, and copy type for ferry_terminal
+        const metadata: Record<string, unknown> = {};
+        if (stopData.address) {
+          metadata.address = stopData.address;
+        }
+        if (stopData.type === 'ferry_terminal') {
+          metadata.type = 'ferry_terminal';
+        }
+
         validStopsCount++;
         return new RealStop(
           stopData.id,
@@ -335,7 +344,7 @@ export class ODataSyncWorker extends BaseBackgroundWorker {
           normalizedCityName, // cityId - use normalized name
           isAirport,
           isRailwayStation,
-          stopData.address ? { address: stopData.address } : undefined
+          Object.keys(metadata).length > 0 ? metadata : undefined
         );
       })
       .filter((stop): stop is RealStop => stop !== null); // Remove null entries

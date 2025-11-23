@@ -111,6 +111,46 @@
       "isFederalCity": true,
       "airports": ["Стригино"],
       "description": "Пятый по численности город России"
+    },
+    {
+      "name": "Новосибирск-Главный",
+      "normalizedName": "новосибирск-главный",
+      "latitude": 55.0415,
+      "longitude": 82.9346,
+      "region": "Новосибирская область",
+      "isKeyCity": false,
+      "isFederalCity": false,
+      "description": "Главный железнодорожный вокзал Новосибирска"
+    },
+    {
+      "name": "Московский",
+      "normalizedName": "московский",
+      "latitude": 59.9343,
+      "longitude": 30.3351,
+      "region": "Ленинградская область",
+      "isKeyCity": false,
+      "isFederalCity": false,
+      "description": "Московский вокзал Санкт-Петербурга"
+    },
+    {
+      "name": "Красноярск-Пассажирский",
+      "normalizedName": "красноярск-пассажирский",
+      "latitude": 56.0089,
+      "longitude": 92.8537,
+      "region": "Красноярский край",
+      "isKeyCity": false,
+      "isFederalCity": false,
+      "description": "Пассажирский железнодорожный вокзал Красноярска"
+    },
+    {
+      "name": "Иркутск-Пассажирский",
+      "normalizedName": "иркутск-пассажирский",
+      "latitude": 52.2812,
+      "longitude": 104.2661,
+      "region": "Иркутская область",
+      "isKeyCity": false,
+      "isFederalCity": false,
+      "description": "Пассажирский железнодорожный вокзал Иркутска"
     }
   ]
 }

@@ -14,14 +14,11 @@ services:
     networks:
       - travel-app-network
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "pg_isready -U ${POSTGRES_USER:-travel_user} -d ${POSTGRES_DB:-travel_app}",
-        ]
+      test: ["CMD-SHELL", "pg_isready -U travel_user -d travel_app || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
 
   minio:
     image: minio/minio:latest
@@ -42,6 +39,7 @@ services:
       interval: 30s
       timeout: 20s
       retries: 3
+      start_period: 30s
 
   redis:
     image: redis:7-alpine
@@ -54,24 +52,19 @@ services:
     networks:
       - travel-app-network
     healthcheck:
-      test:
-        [
-          "CMD",
-          "redis-cli",
-          "--raw",
-          "-a",
-          "${REDIS_PASSWORD:-123456S}",
-          "ping",
-        ]
+      test: ["CMD", "redis-cli", "--raw", "-a", "123456S", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
       target: development
+      args:
+        NODE_ENV: ${NODE_ENV:-development}
     container_name: travel-app-backend
     environment:
       NODE_ENV: ${NODE_ENV:-development}
@@ -109,8 +102,8 @@ services:
       - "${BACKEND_PORT:-5000}:5000"
     volumes:
       - ./backend:/app
-      - /app/node_modules
-      - ./backend/data:/app/data
+      - backend_node_modules:/app/node_modules
+      - ./backend/data:/app/data:ro
     networks:
       - travel-app-network
     depends_on:
@@ -121,60 +114,42 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "--no-verbose",
-          "--tries=1",
-          "--spider",
-          "http://localhost:5000/health",
-        ]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/health/live"]
       interval: 30s
-      timeout: 10s
-      retries: 3
+      timeout: 20s
+      retries: 5
+      start_period: 600s
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
       target: development
+      args:
+        NODE_ENV: ${NODE_ENV:-development}
     container_name: travel-app-frontend
     environment:
-      # Явно заданные переменные окружения для корректной работы Next.js в Docker
-      # CSR (браузер) использует NEXT_PUBLIC_API_URL для запросов к backend
       NEXT_PUBLIC_API_URL: http://localhost:5000
-      # Версия API для клиентских запросов
       NEXT_PUBLIC_API_VERSION: v1
-      # SSR (сервер) использует API_URL для внутренних запросов внутри Docker-сети
       API_URL: http://travel-app-backend:5000
-      # Режим работы Next.js
       NODE_ENV: development
-      # Примечание: .env.local не применяется внутри Docker-контейнера,
-      # все переменные должны быть явно заданы в этой секции environment
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     volumes:
       - ./frontend:/app
-      - /app/node_modules
-      - /app/.next
+      - frontend_node_modules:/app/node_modules
+      - frontend_next:/app/.next
     networks:
       - travel-app-network
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "--no-verbose",
-          "--tries=1",
-          "--spider",
-          "http://localhost:3000",
-        ]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 60s
 
 networks:
   travel-app-network:
@@ -184,3 +159,6 @@ volumes:
   postgres_data:
   minio_data:
   redis_data:
+  backend_node_modules:
+  frontend_node_modules:
+  frontend_next:
