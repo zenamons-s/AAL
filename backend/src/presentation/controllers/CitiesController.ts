@@ -10,6 +10,11 @@
 import { Request, Response } from 'express';
 import { getLogger } from '../../shared/logger/Logger';
 import { parsePaginationParams, createPaginatedResponse } from '../../shared/utils/pagination';
+import { normalizeCityName } from '../../shared/utils/city-normalizer';
+import { getAllUnifiedCities, isCityInUnifiedReference, getUnifiedCity } from '../../shared/utils/unified-cities-loader';
+import { extractCityFromStopName } from '../../shared/utils/city-normalizer';
+import { getCityByAirportName } from '../../shared/utils/airports-loader';
+import { getMainCityBySuburb } from '../../shared/utils/suburbs-loader';
 
 const logger = getLogger('CitiesController');
 
@@ -129,18 +134,60 @@ export async function getCities(req: Request, res: Response): Promise<void> {
       stopRepository.getAllVirtualStops(),
     ]);
 
-    // Извлекаем уникальные города
+    // Извлекаем уникальные города с нормализацией
+    // Use normalized city names for consistency with unified reference
     const citiesSet = new Set<string>();
+    const normalizedCitiesMap = new Map<string, string>(); // normalized -> original name
     
     // Обрабатываем реальные остановки
     for (const stop of realStops) {
+      let cityName: string | null = null;
+      
       // Приоритет: используем cityId, если доступен
       if (stop.cityId) {
-        citiesSet.add(stop.cityId);
+        // cityId is already normalized (from ODataSyncWorker)
+        // But we normalize again to ensure consistency
+        const normalizedCityId = normalizeCityName(stop.cityId);
+        
+        // Try to find original city name from unified reference
+        const unifiedCity = getUnifiedCity(normalizedCityId);
+        if (unifiedCity) {
+          cityName = unifiedCity.name;
+        }
+        // If not found in unified reference, skip this stop's city
+        // It will be added from unified reference at the end if it exists
       } else if (stop.name) {
         // Fallback: извлекаем из названия
-        const cityName = extractCityName(stop.name);
-        if (cityName) {
+        let extractedCityName = extractCityFromStopName(stop.name);
+        if (extractedCityName) {
+          // Try to find city through airports/suburbs references
+          const cityFromAirport = getCityByAirportName(extractedCityName);
+          if (cityFromAirport) {
+            extractedCityName = cityFromAirport;
+          } else {
+            const mainCity = getMainCityBySuburb(extractedCityName);
+            if (mainCity) {
+              extractedCityName = mainCity;
+            }
+          }
+          
+          // Normalize and check in unified reference
+          // CRITICAL: Only use city if it's in unified reference
+          const normalizedCityName = normalizeCityName(extractedCityName);
+          if (isCityInUnifiedReference(normalizedCityName)) {
+            const unifiedCity = getUnifiedCity(normalizedCityName);
+            if (unifiedCity) {
+              cityName = unifiedCity.name; // Use original name from unified reference
+            }
+          }
+          // If not in unified reference, cityName remains null (will be added from unified reference at the end)
+        }
+      }
+      
+      if (cityName) {
+        const normalized = normalizeCityName(cityName);
+        if (!normalizedCitiesMap.has(normalized)) {
+          normalizedCitiesMap.set(normalized, cityName);
           citiesSet.add(cityName);
         }
       }
@@ -148,35 +195,104 @@ export async function getCities(req: Request, res: Response): Promise<void> {
 
     // Обрабатываем виртуальные остановки
     for (const stop of virtualStops) {
+      let cityName: string | null = null;
+      
       // Виртуальные остановки используют cityId, как и реальные
       if (stop.cityId) {
-        citiesSet.add(stop.cityId);
+        // cityId is already normalized (from VirtualEntitiesGeneratorWorker)
+        // But we normalize again to ensure consistency
+        const normalizedCityId = normalizeCityName(stop.cityId);
+        
+        // Try to find original city name from unified reference
+        const unifiedCity = getUnifiedCity(normalizedCityId);
+        if (unifiedCity) {
+          cityName = unifiedCity.name;
+        }
+        // If not found in unified reference, skip this stop's city
+        // It will be added from unified reference at the end if it exists
       } else if (stop.name) {
         // Fallback: извлекаем из названия
-        const cityName = extractCityName(stop.name);
-        if (cityName) {
+        let extractedCityName = extractCityFromStopName(stop.name);
+        if (extractedCityName) {
+          // Try to find city through airports/suburbs references
+          const cityFromAirport = getCityByAirportName(extractedCityName);
+          if (cityFromAirport) {
+            extractedCityName = cityFromAirport;
+          } else {
+            const mainCity = getMainCityBySuburb(extractedCityName);
+            if (mainCity) {
+              extractedCityName = mainCity;
+            }
+          }
+          
+          // Normalize and check in unified reference
+          // CRITICAL: Only use city if it's in unified reference
+          const normalizedCityName = normalizeCityName(extractedCityName);
+          if (isCityInUnifiedReference(normalizedCityName)) {
+            const unifiedCity = getUnifiedCity(normalizedCityName);
+            if (unifiedCity) {
+              cityName = unifiedCity.name; // Use original name from unified reference
+            }
+          }
+          // If not in unified reference, cityName remains null (will be added from unified reference at the end)
+        }
+      }
+      
+      if (cityName) {
+        const normalized = normalizeCityName(cityName);
+        if (!normalizedCitiesMap.has(normalized)) {
+          normalizedCitiesMap.set(normalized, cityName);
           citiesSet.add(cityName);
         }
       }
     }
 
-    // Дополнительно: добавляем города из справочника Якутии, если их нет в остановках
-    // Это гарантирует, что все города из yakutia-cities-reference.json будут доступны
+    // CRITICAL: All cities must come from unified reference
+    // This section ensures that ALL cities from unified reference are included
+    // and that we never use normalized names as fallback
+
+    // Final step: Ensure ALL cities from unified reference are included
+    // This is the single source of truth - all cities must come from unified reference
     try {
-      const { getAllYakutiaCities } = await import('../../shared/utils/yakutia-cities-loader');
-      const yakutiaCities = getAllYakutiaCities();
+      const allUnifiedCities = getAllUnifiedCities();
+      const unifiedCityNames = new Set<string>();
       
-      for (const city of yakutiaCities) {
-        // Добавляем город, если его еще нет в списке
-        // Используем normalizedName для согласованности
-        const normalizedCityName = city.normalizedName || city.name.toLowerCase();
-        if (!citiesSet.has(city.name) && !Array.from(citiesSet).some(c => c.toLowerCase() === normalizedCityName)) {
-          citiesSet.add(city.name);
-        }
+      for (const city of allUnifiedCities) {
+        unifiedCityNames.add(city.name);
+        const normalized = normalizeCityName(city.name);
+        // Always use original city name from unified reference
+        normalizedCitiesMap.set(normalized, city.name);
+        citiesSet.add(city.name);
+      }
+      
+      // Log cities that were in unified reference but not found in stops
+      const missingFromStops = Array.from(unifiedCityNames).filter(
+        cityName => !citiesSet.has(cityName)
+      );
+      
+      if (missingFromStops.length > 0) {
+        logger.info('Cities from unified reference not found in stops (will be added)', {
+          module: 'CitiesController',
+          missingCount: missingFromStops.length,
+          missingCities: missingFromStops.slice(0, 10), // Log first 10
+        });
+      }
+      
+      // Log cities that were in stops but not in unified reference (should not happen)
+      const citiesFromStops = Array.from(citiesSet);
+      const notInReference = citiesFromStops.filter(
+        cityName => !unifiedCityNames.has(cityName)
+      );
+      
+      if (notInReference.length > 0) {
+        logger.warn('Cities found in stops but not in unified reference', {
+          module: 'CitiesController',
+          count: notInReference.length,
+          cities: notInReference.slice(0, 10), // Log first 10
+        });
       }
     } catch (error) {
-      // Если не удалось загрузить справочник, продолжаем без него
-      logger.warn('Failed to load Yakutia cities reference', error as Error);
+      logger.error('Failed to load unified cities reference for final check', error as Error);
     }
 
     const cities = Array.from(citiesSet).sort();
@@ -188,14 +304,37 @@ export async function getCities(req: Request, res: Response): Promise<void> {
     const endIndex = startIndex + limit;
     const paginatedCities = cities.slice(startIndex, endIndex);
 
-    logger.info('Cities loaded from database', {
-      module: 'CitiesController',
-      count: cities.length,
-      realStopsCount: realStops.length,
-      virtualStopsCount: virtualStops.length,
-      page,
-      limit,
-    });
+    // Final verification: compare with unified reference
+    try {
+      const allUnifiedCities = getAllUnifiedCities();
+      const unifiedCityNames = new Set(allUnifiedCities.map(c => c.name));
+      const returnedCityNames = new Set(cities);
+      
+      const missingInResponse = Array.from(unifiedCityNames).filter(
+        name => !returnedCityNames.has(name)
+      );
+      
+      logger.info('Cities loaded from database', {
+        module: 'CitiesController',
+        count: cities.length,
+        unifiedReferenceCount: allUnifiedCities.length,
+        missingInResponse: missingInResponse.length,
+        realStopsCount: realStops.length,
+        virtualStopsCount: virtualStops.length,
+        page,
+        limit,
+      });
+      
+      if (missingInResponse.length > 0) {
+        logger.warn('Cities from unified reference missing in response', {
+          module: 'CitiesController',
+          missingCount: missingInResponse.length,
+          missingCities: missingInResponse.slice(0, 10),
+        });
+      }
+    } catch (error) {
+      logger.warn('Failed to verify cities against unified reference', error as Error);
+    }
 
     const response = createPaginatedResponse(paginatedCities, total, page, limit);
 

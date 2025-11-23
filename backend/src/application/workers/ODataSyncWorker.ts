@@ -263,6 +263,12 @@ export class ODataSyncWorker extends BaseBackgroundWorker {
     let validStopsCount = 0;
     let invalidStopsCount = 0;
     const validationErrors: string[] = [];
+    const cityMappingStats = {
+      suburbsMapped: 0,
+      airportsMapped: 0,
+      notInReference: 0,
+      extractedFromName: 0,
+    };
 
     const stops = response.stops
       .map((stopData: any) => {
@@ -281,6 +287,7 @@ export class ODataSyncWorker extends BaseBackgroundWorker {
         if (cityName) {
           const mainCity = getMainCityBySuburb(cityName);
           if (mainCity) {
+            cityMappingStats.suburbsMapped++;
             cityName = mainCity;
           }
         }
@@ -289,14 +296,42 @@ export class ODataSyncWorker extends BaseBackgroundWorker {
         if (cityName) {
           const cityFromAirport = getCityByAirportName(cityName);
           if (cityFromAirport) {
+            cityMappingStats.airportsMapped++;
             cityName = cityFromAirport;
           }
         }
+        
+        // Track if city was extracted from stop name
+        if (!stopData.cityName && cityName) {
+          cityMappingStats.extractedFromName++;
+        }
 
         // Step 3: Normalize cityName
-        const normalizedCityName = cityName ? normalizeCityName(cityName) : '';
+        let normalizedCityName = cityName ? normalizeCityName(cityName) : '';
 
-        // Step 4: Validate stop data
+        // Step 4: If normalized cityName is not in unified reference, try to find it through airports/suburbs again
+        // This handles cases where extractCityFromStopName returns airport/suburb name instead of city name
+        if (normalizedCityName && !isCityInUnifiedReference(normalizedCityName)) {
+          // Try to find city through airports reference (using original stop name)
+          if (stopData.name) {
+            const cityFromAirportName = getCityByAirportName(stopData.name);
+            if (cityFromAirportName) {
+              cityName = cityFromAirportName;
+              normalizedCityName = normalizeCityName(cityName);
+            }
+          }
+          
+          // Try to find city through suburbs reference (using original stop name)
+          if (!isCityInUnifiedReference(normalizedCityName) && stopData.name) {
+            const mainCityFromSuburb = getMainCityBySuburb(stopData.name);
+            if (mainCityFromSuburb) {
+              cityName = mainCityFromSuburb;
+              normalizedCityName = normalizeCityName(cityName);
+            }
+          }
+        }
+
+        // Step 5: Validate stop data
         const stopDataForValidation = {
           name: stopData.name,
           latitude,
@@ -313,8 +348,9 @@ export class ODataSyncWorker extends BaseBackgroundWorker {
           return null; // Skip invalid stop
         }
 
-        // Step 5: Check if normalized cityName is in unified reference (Yakutia + Federal cities)
+        // Step 6: Check if normalized cityName is in unified reference (Yakutia + Federal cities)
         if (normalizedCityName && !isCityInUnifiedReference(normalizedCityName)) {
+          cityMappingStats.notInReference++;
           invalidStopsCount++;
           const errorMsg = `Stop "${stopData.name}" (ID: ${stopData.id}): City "${cityName}" (normalized: "${normalizedCityName}") is not in unified reference`;
           validationErrors.push(errorMsg);
@@ -351,6 +387,7 @@ export class ODataSyncWorker extends BaseBackgroundWorker {
 
     // Log validation statistics
     this.log('INFO', `Stop validation statistics: ${validStopsCount} valid, ${invalidStopsCount} invalid`);
+    this.log('INFO', `City mapping statistics: ${cityMappingStats.suburbsMapped} suburbs mapped, ${cityMappingStats.airportsMapped} airports mapped, ${cityMappingStats.extractedFromName} extracted from name, ${cityMappingStats.notInReference} not in reference`);
     if (validationErrors.length > 0) {
       this.log('WARN', `Validation errors (${validationErrors.length}):`);
       validationErrors.forEach((error, index) => {

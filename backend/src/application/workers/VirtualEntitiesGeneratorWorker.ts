@@ -30,7 +30,9 @@ import {
   isCityInUnifiedReference,
   type UnifiedCity,
 } from '../../shared/utils/unified-cities-loader';
-import { normalizeCityName } from '../../shared/utils/city-normalizer';
+import { normalizeCityName, extractCityFromStopName } from '../../shared/utils/city-normalizer';
+import { getCityByAirportName } from '../../shared/utils/airports-loader';
+import { getMainCityBySuburb } from '../../shared/utils/suburbs-loader';
 
 /**
  * Virtual Entities Generator Worker
@@ -124,20 +126,52 @@ export class VirtualEntitiesGeneratorWorker extends BaseBackgroundWorker {
       const allCities = [...yakutiaCities, ...federalCities];
       
       const realStops = await this.stopRepository.getAllRealStops();
-      const citiesWithStops = new Set(
-        realStops
-          .filter(stop => stop.cityId)
-          .map(stop => normalizeCityName(stop.cityId!))
-      );
+      // Create set of normalized city names from real stops
+      // Ensure both city.name and stop.cityId are normalized for comparison
+      const citiesWithStops = new Set<string>();
+      for (const stop of realStops) {
+        if (stop.cityId) {
+          // stop.cityId is already normalized (from ODataSyncWorker)
+          // But we normalize again to ensure consistency
+          const normalizedStopCityId = normalizeCityName(stop.cityId);
+          citiesWithStops.add(normalizedStopCityId);
+        }
+      }
 
       // Filter cities: must be in unified reference, must not have real stops
+      // Compare normalized city names from reference with normalized stop cityIds
       const missingCities = allCities
-        .filter(city => 
-          !citiesWithStops.has(normalizeCityName(city.name))
-        )
+        .filter(city => {
+          const normalizedCityName = normalizeCityName(city.name);
+          // Check if this normalized city name is NOT in the set of cities with stops
+          return !citiesWithStops.has(normalizedCityName);
+        })
         .map(city => city.name);
 
-      this.log('INFO', `Found ${missingCities.length} cities without real stops: ${missingCities.slice(0, 5).join(', ')}${missingCities.length > 5 ? '...' : ''}`);
+      this.log('INFO', `Found ${missingCities.length} cities without real stops: ${missingCities.slice(0, 10).join(', ')}${missingCities.length > 10 ? `... (${missingCities.length - 10} more)` : ''}`);
+      
+      // Log statistics: cities by type
+      const missingYakutia = missingCities.filter(cityName => {
+        const normalized = normalizeCityName(cityName);
+        const city = yakutiaCities.find(c => normalizeCityName(c.name) === normalized);
+        return !!city;
+      });
+      const missingFederal = missingCities.filter(cityName => {
+        const normalized = normalizeCityName(cityName);
+        const city = federalCities.find(c => normalizeCityName(c.name) === normalized);
+        return !!city;
+      });
+      this.log('INFO', `Missing cities breakdown: ${missingYakutia.length} Yakutia, ${missingFederal.length} federal`);
+      
+      // Log key cities that are missing
+      const keyCities = ['Якутск', 'Олёкминск', 'Мирный', 'Верхоянск', 'Нерюнгри', 'Алдан', 'Ленск', 'Покровск'];
+      const missingKeyCities = keyCities.filter(cityName => {
+        const normalized = normalizeCityName(cityName);
+        return missingCities.some(mc => normalizeCityName(mc) === normalized);
+      });
+      if (missingKeyCities.length > 0) {
+        this.log('WARN', `Key cities missing real stops: ${missingKeyCities.join(', ')}`);
+      }
 
       // ====================================================================
       // Step 3: Generate Virtual Stops
@@ -148,7 +182,15 @@ export class VirtualEntitiesGeneratorWorker extends BaseBackgroundWorker {
       
       if (virtualStops.length > 0) {
         const savedStops = await this.stopRepository.saveVirtualStopsBatch(virtualStops);
-        this.log('INFO', `Generated ${savedStops.length} virtual stops`);
+        this.log('INFO', `Generated ${savedStops.length} virtual stops from ${missingCities.length} missing cities`);
+        
+        // Log cities that were not found in unified reference
+        const notFoundCount = missingCities.length - virtualStops.length;
+        if (notFoundCount > 0) {
+          this.log('WARN', `${notFoundCount} cities from missing list were not found in unified reference and skipped`);
+        }
+      } else {
+        this.log('WARN', `No virtual stops generated from ${missingCities.length} missing cities - check unified reference`);
       }
 
       // ====================================================================
@@ -168,6 +210,24 @@ export class VirtualEntitiesGeneratorWorker extends BaseBackgroundWorker {
       if (allVirtualRoutes.length > 0) {
         const savedRoutes = await this.routeRepository.saveVirtualRoutesBatch(allVirtualRoutes);
         this.log('INFO', `Generated ${savedRoutes.length} virtual routes (${hubBasedRoutes.length} hub-based, ${connectivityRoutes.length} connectivity)`);
+        
+        // Log statistics by route type
+        const routesByType = new Map<string, number>();
+        for (const route of allVirtualRoutes) {
+          const routeType = route.routeType || 'UNKNOWN';
+          routesByType.set(routeType, (routesByType.get(routeType) || 0) + 1);
+        }
+        this.log('INFO', `Virtual routes by type: ${JSON.stringify(Object.fromEntries(routesByType))}`);
+        
+        // Log statistics by generation method
+        const routesByMethod = new Map<string, number>();
+        for (const route of allVirtualRoutes) {
+          const method = (route.metadata as any)?.generationMethod || 'unknown';
+          routesByMethod.set(method, (routesByMethod.get(method) || 0) + 1);
+        }
+        this.log('INFO', `Virtual routes by generation method: ${JSON.stringify(Object.fromEntries(routesByMethod))}`);
+      } else {
+        this.log('WARN', 'No virtual routes generated - connectivity may be limited');
       }
 
       // ====================================================================
@@ -179,7 +239,24 @@ export class VirtualEntitiesGeneratorWorker extends BaseBackgroundWorker {
       
       if (virtualFlights.length > 0) {
         const savedFlights = await this.flightRepository.saveFlightsBatch(virtualFlights);
-        this.log('INFO', `Generated ${savedFlights.length} virtual flights`);
+        this.log('INFO', `Generated ${savedFlights.length} virtual flights for ${allVirtualRoutes.length} virtual routes`);
+        
+        // Log statistics: flights per route
+        const flightsByRoute = new Map<string, number>();
+        for (const flight of virtualFlights) {
+          const routeId = flight.routeId || 'UNKNOWN';
+          flightsByRoute.set(routeId, (flightsByRoute.get(routeId) || 0) + 1);
+        }
+        const avgFlightsPerRoute = flightsByRoute.size > 0 ? Math.round(virtualFlights.length / flightsByRoute.size) : 0;
+        this.log('INFO', `Virtual flights: ${flightsByRoute.size} routes, average ${avgFlightsPerRoute} flights per route`);
+        
+        // Log if some routes don't have flights
+        const routesWithoutFlights = allVirtualRoutes.filter(r => !flightsByRoute.has(r.id));
+        if (routesWithoutFlights.length > 0) {
+          this.log('WARN', `${routesWithoutFlights.length} virtual routes have no flights generated`);
+        }
+      } else {
+        this.log('WARN', `No virtual flights generated for ${allVirtualRoutes.length} routes - routes may not be usable`);
       }
 
       // ====================================================================
@@ -230,34 +307,65 @@ export class VirtualEntitiesGeneratorWorker extends BaseBackgroundWorker {
     const yakutiaCities = getAllYakutiaCitiesUnified();
     const federalCities = getAllFederalCities();
     const allCities = [...yakutiaCities, ...federalCities];
-    const citiesMap = new Map<string, UnifiedCity>();
+    
+    // Create map with both original name and normalized name as keys
+    // This ensures we can find cities regardless of how they're referenced
+    const citiesMapByName = new Map<string, UnifiedCity>();
+    const citiesMapByNormalized = new Map<string, UnifiedCity>();
     for (const city of allCities) {
-      citiesMap.set(city.name, city);
+      citiesMapByName.set(city.name, city);
+      const normalized = normalizeCityName(city.name);
+      citiesMapByNormalized.set(normalized, city);
     }
     
-    return cityNames
-      .filter(cityName => {
-        // Only generate if city is in unified reference
-        return isCityInUnifiedReference(cityName);
-      })
-      .map(cityName => {
-        const city = citiesMap.get(cityName);
-        if (!city) {
-          throw new Error(`City "${cityName}" not found in unified reference`);
-        }
-        
-        return new VirtualStop(
-          `virtual-stop-${this.generateStableId(cityName)}`,
-          `г. ${cityName}`,
-          city.latitude,
-          city.longitude,
-          'MAIN_GRID', // gridType
-          normalizeCityName(cityName), // cityId - use normalized name
-          undefined, // gridPosition
-          [], // realStopsNearby
-          new Date() // createdAt
-        );
+    const generatedStops: VirtualStop[] = [];
+    const notFoundCities: string[] = [];
+    
+    for (const cityName of cityNames) {
+      // Only generate if city is in unified reference
+      if (!isCityInUnifiedReference(cityName)) {
+        notFoundCities.push(cityName);
+        continue;
+      }
+      
+      // Try to find city by original name first, then by normalized name
+      let city = citiesMapByName.get(cityName);
+      if (!city) {
+        const normalized = normalizeCityName(cityName);
+        city = citiesMapByNormalized.get(normalized);
+      }
+      
+      if (!city) {
+        notFoundCities.push(cityName);
+        this.log('WARN', `City "${cityName}" not found in unified reference maps (skipping virtual stop generation)`);
+        continue;
+      }
+      
+      // CRITICAL: Use original city name from unified reference for stop name
+      // and normalized name for cityId
+      generatedStops.push(new VirtualStop(
+        `virtual-stop-${this.generateStableId(city.name)}`, // Use original city name for ID generation
+        `г. ${city.name}`, // Use original city name from unified reference
+        city.latitude,
+        city.longitude,
+        'MAIN_GRID', // gridType
+        normalizeCityName(city.name), // cityId - use normalized name from unified reference
+        undefined, // gridPosition
+        [], // realStopsNearby
+        new Date() // createdAt
+      ));
+    }
+    
+    // Log cities that were not found in unified reference
+    if (notFoundCities.length > 0) {
+      this.log('WARN', `Virtual cities not found in unified reference: ${notFoundCities.length} cities`, {
+        cities: notFoundCities.slice(0, 10), // Log first 10
       });
+    }
+    
+    this.log('INFO', `Generated ${generatedStops.length} virtual stops from ${cityNames.length} city names`);
+    
+    return generatedStops;
   }
 
   /**
@@ -625,11 +733,34 @@ export class VirtualEntitiesGeneratorWorker extends BaseBackgroundWorker {
     }
     
     for (const stop of allStops) {
-      const cityName = stop.cityId || this.extractCityFromStopName(stop.name);
+      // Extract city name from stop
+      let cityName = stop.cityId || extractCityFromStopName(stop.name);
       if (!cityName) continue;
 
-      const normalizedCity = normalizeCityName(cityName);
-      if (!isCityInUnifiedReference(normalizedCity)) continue; // Only process cities in unified reference
+      // Normalize city name for consistent comparison
+      let normalizedCity = normalizeCityName(cityName);
+      
+      // If normalized city is not in unified reference, try to find it through airports/suburbs
+      if (!isCityInUnifiedReference(normalizedCity)) {
+        // Try to find city through airports reference
+        const cityFromAirport = getCityByAirportName(cityName);
+        if (cityFromAirport) {
+          cityName = cityFromAirport;
+          normalizedCity = normalizeCityName(cityName);
+        }
+        
+        // Try to find city through suburbs reference
+        if (!isCityInUnifiedReference(normalizedCity)) {
+          const mainCity = getMainCityBySuburb(cityName);
+          if (mainCity) {
+            cityName = mainCity;
+            normalizedCity = normalizeCityName(cityName);
+          }
+        }
+      }
+      
+      // Only process cities in unified reference
+      if (!isCityInUnifiedReference(normalizedCity)) continue;
 
       const cityType = cityTypeMap.get(normalizedCity);
       if (!cityType) continue;

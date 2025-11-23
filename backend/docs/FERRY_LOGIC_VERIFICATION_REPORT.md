@@ -281,3 +281,4 @@ private getStopType(...): 'airport' | 'ground' | 'ferry_terminal' {
 
 Все исправления ferry-логики применены корректно. Graph Builder готов к работе и должен успешно собирать граф без падений на ferry edges. Система переходит в FULL MODE и поиск маршрутов работает корректно.
 
+

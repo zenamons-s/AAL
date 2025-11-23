@@ -336,3 +336,4 @@ const allStops = await this.stopRepository.getAllStops();
 
 **Статус:** Диагностика завершена. Все блокирующие факторы идентифицированы.
 
+

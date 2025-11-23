@@ -225,6 +225,65 @@ export class GraphBuilderWorker extends BaseBackgroundWorker {
       const { nodes, edges } = this.buildGraphStructure(stopsForGraph, routesForGraph, flightsForGraph);
 
       this.log('INFO', `Built graph: ${nodes.length} nodes, ${edges.length} edges`);
+      
+      // ====================================================================
+      // Step 4.0: Log cities in graph for verification
+      // ====================================================================
+      this.log('INFO', 'Step 4.0: Verifying cities in graph...');
+      
+      try {
+        const { getAllUnifiedCities } = await import('../../shared/utils/unified-cities-loader');
+        const allUnifiedCities = getAllUnifiedCities();
+        const unifiedCityNames = new Set(allUnifiedCities.map(c => normalizeCityName(c.name)));
+        
+        // Collect unique cities from graph nodes
+        const citiesInGraph = new Set<string>();
+        for (const node of nodes) {
+          if (node.cityId) {
+            const normalized = normalizeCityName(node.cityId);
+            citiesInGraph.add(normalized);
+          }
+        }
+        
+        // Find cities from unified reference that are missing in graph
+        const missingInGraph = Array.from(unifiedCityNames).filter(
+          normalizedName => !citiesInGraph.has(normalizedName)
+        );
+        
+        // Find cities in graph that are not in unified reference (should not happen)
+        const notInReference = Array.from(citiesInGraph).filter(
+          normalizedName => !unifiedCityNames.has(normalizedName)
+        );
+        
+        this.log('INFO', `Cities verification:`, {
+          citiesInGraph: citiesInGraph.size,
+          unifiedReferenceCount: allUnifiedCities.length,
+          missingInGraph: missingInGraph.length,
+          notInReference: notInReference.length,
+        });
+        
+        if (missingInGraph.length > 0) {
+          // Try to find original city names for missing cities
+          const missingOriginalNames = missingInGraph
+            .map(normalizedName => {
+              const city = allUnifiedCities.find(c => normalizeCityName(c.name) === normalizedName);
+              return city ? city.name : normalizedName;
+            })
+            .slice(0, 10);
+          
+          this.log('WARN', `Cities from unified reference missing in graph: ${missingInGraph.length} cities`, {
+            missingCities: missingOriginalNames,
+          });
+        }
+        
+        if (notInReference.length > 0) {
+          this.log('WARN', `Cities in graph not in unified reference: ${notInReference.length} cities`, {
+            cities: notInReference.slice(0, 10),
+          });
+        }
+      } catch (error) {
+        this.log('WARN', 'Failed to verify cities in graph', error as Error);
+      }
 
       // ====================================================================
       // Step 4.1: Validate Graph Structure
@@ -251,20 +310,39 @@ export class GraphBuilderWorker extends BaseBackgroundWorker {
         this.log('WARN', `Graph has fewer edges than expected: ${edges.length} < 160`);
       }
       
-      // Check for Verkhoyansk and Mirny in graph
-      const verkhoyanskNode = nodes.find(n => n.cityId === 'верхоянск' || n.id.includes('верхоянск'));
-      const mirnyNode = nodes.find(n => n.cityId === 'мирный' || n.id.includes('мирный'));
+      // Check for key cities in graph (using normalized cityId for consistency)
+      const verkhoyanskNormalized = normalizeCityName('Верхоянск');
+      const mirnyNormalized = normalizeCityName('Мирный');
+      const yakutskNormalized = normalizeCityName('Якутск');
+      const olekminskNormalized = normalizeCityName('Олёкминск');
+      
+      const verkhoyanskNode = nodes.find(n => n.cityId === verkhoyanskNormalized || n.id.includes('верхоянск'));
+      const mirnyNode = nodes.find(n => n.cityId === mirnyNormalized || n.id.includes('мирный'));
+      const yakutskNode = nodes.find(n => n.cityId === yakutskNormalized || n.id.includes('якутск'));
+      const olekminskNode = nodes.find(n => n.cityId === olekminskNormalized || n.id.includes('олёкминск'));
       
       if (!verkhoyanskNode) {
         this.log('WARN', 'Verkhoyansk (Верхоянск) not found in graph nodes');
       } else {
-        this.log('INFO', `Verkhoyansk found in graph: ${verkhoyanskNode.id}`);
+        this.log('INFO', `Verkhoyansk found in graph: ${verkhoyanskNode.id} (cityId: ${verkhoyanskNode.cityId})`);
       }
       
       if (!mirnyNode) {
         this.log('WARN', 'Mirny (Мирный) not found in graph nodes');
       } else {
-        this.log('INFO', `Mirny found in graph: ${mirnyNode.id}`);
+        this.log('INFO', `Mirny found in graph: ${mirnyNode.id} (cityId: ${mirnyNode.cityId})`);
+      }
+      
+      if (!yakutskNode) {
+        this.log('WARN', 'Yakutsk (Якутск) not found in graph nodes');
+      } else {
+        this.log('INFO', `Yakutsk found in graph: ${yakutskNode.id} (cityId: ${yakutskNode.cityId})`);
+      }
+      
+      if (!olekminskNode) {
+        this.log('WARN', 'Olekminsk (Олёкминск) not found in graph nodes');
+      } else {
+        this.log('INFO', `Olekminsk found in graph: ${olekminskNode.id} (cityId: ${olekminskNode.cityId})`);
       }
 
       // ====================================================================
@@ -555,14 +633,34 @@ export class GraphBuilderWorker extends BaseBackgroundWorker {
     flights: Array<{ id: string; routeId?: string; fromStopId: string; toStopId: string; departureTime: string; arrivalTime: string; isVirtual?: boolean }>
   ): { nodes: GraphNode[]; edges: GraphEdge[] } {
     // Build nodes from stops
-    const nodes: GraphNode[] = stops.map(stop => ({
-      id: stop.id,
-      latitude: stop.latitude,
-      longitude: stop.longitude,
-      isVirtual: !stop.cityId, // Virtual stops might not have cityId
-      cityId: stop.cityId,
-      metadata: stop.metadata, // Preserve metadata for ferry terminal detection
-    }));
+    // CRITICAL: Normalize cityId for each stop to ensure consistency with unified reference
+    // All cityIds must be normalized before creating GraphNode
+    // cityId in stops is already normalized (from ODataSyncWorker or VirtualEntitiesGeneratorWorker)
+    // But we normalize again to ensure consistency
+    const nodes: GraphNode[] = stops.map(stop => {
+      // Normalize cityId if present to ensure consistency with unified reference
+      const normalizedCityId = stop.cityId ? normalizeCityName(stop.cityId) : undefined;
+      
+      // Verify that normalized cityId is in unified reference (if present)
+      // This ensures we don't create nodes for invalid cities
+      // Note: filterInvalidStops should have already filtered these out, but we verify here as well
+      if (normalizedCityId && !isCityInUnifiedReference(normalizedCityId)) {
+        // This should not happen if filterInvalidStops worked correctly
+        // But we don't skip the node here - it's already been validated
+      }
+      
+      // Determine if stop is virtual based on ID prefix (more reliable than checking cityId)
+      const isVirtual = stop.id.startsWith('virtual-stop-');
+      
+      return {
+        id: stop.id,
+        latitude: stop.latitude,
+        longitude: stop.longitude,
+        isVirtual, // Use ID prefix to determine if virtual
+        cityId: normalizedCityId, // Use normalized cityId for consistency with unified reference
+        metadata: stop.metadata, // Preserve metadata for ferry terminal detection
+      };
+    });
 
     // Build stop lookup map for transfer calculation
     const stopMap = new Map<string, { id: string; name?: string; cityId?: string; isAirport?: boolean; isRailwayStation?: boolean; metadata?: Record<string, unknown> }>();
@@ -579,6 +677,8 @@ export class GraphBuilderWorker extends BaseBackgroundWorker {
 
     // Build edges from flights
     const edgesMap = new Map<string, GraphEdge>();
+    let ferryEdgesSkipped = 0;
+    let ferryEdgesCreated = 0;
 
     for (const flight of flights) {
       const edgeKey = `${flight.fromStopId}-${flight.toStopId}-${flight.routeId || 'direct'}`;
@@ -604,8 +704,11 @@ export class GraphBuilderWorker extends BaseBackgroundWorker {
             // Invalid ferry route: one or both stops are not ferry terminals
             // Skip this edge or change transport type (prefer skipping)
             this.log('WARN', `Skipping invalid ferry edge: ${flight.fromStopId} -> ${flight.toStopId} (stops are not ferry terminals)`);
+            ferryEdgesSkipped++;
             continue; // Skip this edge entirely
           }
+          
+          ferryEdgesCreated++;
           
           // Valid ferry route: use route.durationMinutes (20 minutes) + waiting time from calculateFerryWeight()
           if (route.metadata?.ferrySchedule) {
@@ -683,8 +786,11 @@ export class GraphBuilderWorker extends BaseBackgroundWorker {
                 // Invalid ferry route: one or both stops are not ferry terminals
                 // Skip this edge
                 this.log('WARN', `Skipping invalid ferry route edge: ${fromStopId} -> ${toStopId} (stops are not ferry terminals)`);
+                ferryEdgesSkipped++;
                 continue; // Skip this edge entirely
               }
+              
+              ferryEdgesCreated++;
               
               // Valid ferry route: calculate weight with seasonality
               let weight: number;
@@ -728,14 +834,17 @@ export class GraphBuilderWorker extends BaseBackgroundWorker {
     // ====================================================================
     this.log('INFO', 'Step 5: Adding transfer edges between stops in same city...');
     
-    // Group stops by cityId
+    // Group stops by normalized cityId
+    // CRITICAL: Normalize cityId before grouping to ensure consistency
     const stopsByCity = new Map<string, string[]>();
     for (const stop of stops) {
       if (stop.cityId) {
-        if (!stopsByCity.has(stop.cityId)) {
-          stopsByCity.set(stop.cityId, []);
+        // Normalize cityId to ensure consistency with unified reference
+        const normalizedCityId = normalizeCityName(stop.cityId);
+        if (!stopsByCity.has(normalizedCityId)) {
+          stopsByCity.set(normalizedCityId, []);
         }
-        stopsByCity.get(stop.cityId)!.push(stop.id);
+        stopsByCity.get(normalizedCityId)!.push(stop.id);
       }
     }
 
@@ -790,6 +899,27 @@ export class GraphBuilderWorker extends BaseBackgroundWorker {
     }
 
     this.log('INFO', `Added ${transferEdgesCount} transfer edges between stops in same cities`);
+    
+    // Log statistics: cities with transfer edges
+    const citiesWithTransfers = Array.from(stopsByCity.entries())
+      .filter(([_, stopIds]) => stopIds.length >= 2)
+      .map(([cityId, stopIds]) => ({ cityId, stopCount: stopIds.length }));
+    
+    if (citiesWithTransfers.length > 0) {
+      this.log('INFO', `Cities with transfer edges: ${citiesWithTransfers.length} cities, average ${Math.round(transferEdgesCount / citiesWithTransfers.length)} edges per city`);
+      
+      // Log top cities by transfer edges
+      const topCities = citiesWithTransfers
+        .sort((a, b) => b.stopCount - a.stopCount)
+        .slice(0, 5)
+        .map(c => `${c.cityId} (${c.stopCount} stops)`);
+      this.log('INFO', `Top cities by stops: ${topCities.join(', ')}`);
+    }
+
+    // Log ferry edges statistics
+    if (ferryEdgesCreated > 0 || ferryEdgesSkipped > 0) {
+      this.log('INFO', `Ferry edges: ${ferryEdgesCreated} created, ${ferryEdgesSkipped} skipped (invalid terminals)`);
+    }
 
     const edges = Array.from(edgesMap.values());
 

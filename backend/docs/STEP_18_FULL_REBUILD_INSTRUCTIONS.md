@@ -419,3 +419,4 @@ docker-compose logs backend | grep -i "pipeline\|worker\|graph"
 **Версия:** 1.0
 **Статус:** Готов к выполнению
 
+
