@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Travel App SaaS (MVP)
 
 Travel App SaaS - система для планирования и покупки билетов на транспорт с интеллектуальным помощником-мамонтёнком.
@@ -27,7 +28,6 @@ Travel App SaaS - система для планирования и покупк
 ```bash
 # Скопируйте .env.example в .env
 cp .env.example .env
-
 # Отредактируйте .env при необходимости
 ```
 
@@ -83,3 +83,6 @@ npm run dev
 - **Database:** PostgreSQL 15
 - **Storage:** MinIO (S3-compatible)
 - **Containerization:** Docker, Docker Compose
+=======
+# AAL
+>>>>>>> 7e9fbe15f01451181b1a84d4572403c88434c65a
