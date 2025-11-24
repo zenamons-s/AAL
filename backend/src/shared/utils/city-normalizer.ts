@@ -11,7 +11,15 @@
 import { getCityByAirportName } from './airports-loader';
 
 /**
+ * Cache for normalized city names to improve performance
+ * Maps original city name to normalized version
+ */
+const normalizationCache = new Map<string, string>();
+
+/**
  * Нормализовать название города
+ * 
+ * Uses memoization to cache results and improve performance.
  * 
  * @param cityName - Название города (может содержать "г. ", пробелы, разные регистры)
  * @returns Нормализованное название (lowercase, без префиксов, без лишних пробелов)
@@ -24,6 +32,11 @@ import { getCityByAirportName } from './airports-loader';
 export function normalizeCityName(cityName: string): string {
   if (!cityName) {
     return '';
+  }
+
+  // Check cache first
+  if (normalizationCache.has(cityName)) {
+    return normalizationCache.get(cityName)!;
   }
 
   // Убираем префиксы типа "г.", "город", "г "
@@ -42,6 +55,9 @@ export function normalizeCityName(cityName: string): string {
     .replace(/ё/g, 'е')
     .replace(/ъ/g, '')
     .replace(/ь/g, '');
+
+  // Cache the result
+  normalizationCache.set(cityName, normalized);
 
   return normalized;
 }

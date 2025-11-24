@@ -15,8 +15,12 @@ import { getAllUnifiedCities, isCityInUnifiedReference, getUnifiedCity } from '.
 import { extractCityFromStopName } from '../../shared/utils/city-normalizer';
 import { getCityByAirportName } from '../../shared/utils/airports-loader';
 import { getMainCityBySuburb } from '../../shared/utils/suburbs-loader';
+import { RedisCacheService } from '../../infrastructure/cache/RedisCacheService';
 
 const logger = getLogger('CitiesController');
+const cacheService = new RedisCacheService();
+const CACHE_KEY = 'cities:list:all';
+const CACHE_TTL = 3600; // 1 hour
 
 /**
  * Извлекает название города из названия остановки
@@ -119,8 +123,25 @@ function extractCityName(stopName: string): string | null {
  *         $ref: '#/components/responses/InternalServerError'
  */
 export async function getCities(req: Request, res: Response): Promise<void> {
+  const startTime = Date.now();
+  
   try {
     logger.info('Getting available cities', { module: 'CitiesController' });
+
+    // Check Redis cache first
+    const cacheKey = `${CACHE_KEY}:${req.query.page || 1}:${req.query.limit || 100}`;
+    const cachedResult = await cacheService.get<any>(cacheKey);
+    
+    if (cachedResult) {
+      const duration = Date.now() - startTime;
+      logger.info('Cities list served from cache', {
+        module: 'CitiesController',
+        duration: `${duration}ms`,
+        cacheHit: true,
+      });
+      res.json(cachedResult);
+      return;
+    }
 
     const { DatabaseConfig } = await import('../../infrastructure/config/database.config');
     const { PostgresStopRepository } = await import('../../infrastructure/repositories/PostgresStopRepository');
@@ -253,62 +274,92 @@ export async function getCities(req: Request, res: Response): Promise<void> {
 
     // Final step: Ensure ALL cities from unified reference are included
     // This is the single source of truth - all cities must come from unified reference
+    const citiesSetBeforeFinal = new Set(citiesSet); // Snapshot before final step for logging
+    
     try {
       const allUnifiedCities = getAllUnifiedCities();
-      const unifiedCityNames = new Set<string>();
       
-      for (const city of allUnifiedCities) {
-        unifiedCityNames.add(city.name);
-        const normalized = normalizeCityName(city.name);
-        // Always use original city name from unified reference
-        normalizedCitiesMap.set(normalized, city.name);
-        citiesSet.add(city.name);
-      }
-      
-      // Log cities that were in unified reference but not found in stops
-      const missingFromStops = Array.from(unifiedCityNames).filter(
-        cityName => !citiesSet.has(cityName)
-      );
-      
-      if (missingFromStops.length > 0) {
-        logger.info('Cities from unified reference not found in stops (will be added)', {
-          module: 'CitiesController',
-          missingCount: missingFromStops.length,
-          missingCities: missingFromStops.slice(0, 10), // Log first 10
+      // CRITICAL FIX: Check if unified reference is empty or failed to load
+      if (!allUnifiedCities || allUnifiedCities.length === 0) {
+        logger.error('Unified cities reference is empty - this should not happen', undefined, {
+          citiesFromStops: citiesSetBeforeFinal.size,
         });
-      }
-      
-      // Log cities that were in stops but not in unified reference (should not happen)
-      const citiesFromStops = Array.from(citiesSet);
-      const notInReference = citiesFromStops.filter(
-        cityName => !unifiedCityNames.has(cityName)
-      );
-      
-      if (notInReference.length > 0) {
-        logger.warn('Cities found in stops but not in unified reference', {
+        // Continue with cities from stops only - this is a fallback
+      } else {
+        const unifiedCityNames = new Set<string>();
+        
+        logger.info('Final step: Adding all cities from unified reference', {
           module: 'CitiesController',
-          count: notInReference.length,
-          cities: notInReference.slice(0, 10), // Log first 10
+          unifiedCitiesCount: allUnifiedCities.length,
+          citiesFromStopsBefore: citiesSetBeforeFinal.size,
+        });
+        
+        // Add ALL cities from unified reference
+        for (const city of allUnifiedCities) {
+          unifiedCityNames.add(city.name);
+          const normalized = normalizeCityName(city.name);
+          // Always use original city name from unified reference (overwrite if exists)
+          normalizedCitiesMap.set(normalized, city.name);
+          citiesSet.add(city.name);
+        }
+        
+        // Log cities that were in unified reference but not found in stops (BEFORE final step)
+        const missingFromStops = Array.from(unifiedCityNames).filter(
+          cityName => !citiesSetBeforeFinal.has(cityName)
+        );
+        
+        if (missingFromStops.length > 0) {
+          logger.info('Cities from unified reference not found in stops (added in final step)', {
+            module: 'CitiesController',
+            missingCount: missingFromStops.length,
+            missingCities: missingFromStops.slice(0, 10), // Log first 10
+          });
+        }
+        
+        // Log cities that were in stops but not in unified reference (should not happen)
+        const citiesFromStops = Array.from(citiesSetBeforeFinal);
+        const notInReference = citiesFromStops.filter(
+          cityName => !unifiedCityNames.has(cityName)
+        );
+        
+        if (notInReference.length > 0) {
+          logger.warn('Cities found in stops but not in unified reference', {
+            module: 'CitiesController',
+            count: notInReference.length,
+            cities: notInReference.slice(0, 10), // Log first 10
+          });
+        }
+        
+        logger.info('Final step completed', {
+          module: 'CitiesController',
+          totalCitiesAfterFinal: citiesSet.size,
+          citiesAddedInFinal: citiesSet.size - citiesSetBeforeFinal.size,
         });
       }
     } catch (error) {
-      logger.error('Failed to load unified cities reference for final check', error as Error);
+      logger.error('Failed to load unified cities reference for final check', error as Error, {
+        errorDetails: error instanceof Error ? error.stack : String(error),
+        citiesFromStops: citiesSetBeforeFinal.size,
+      });
+      // Continue with cities from stops only - this is a fallback
     }
 
     const cities = Array.from(citiesSet).sort();
 
     // Apply pagination
-    const { page, limit } = parsePaginationParams(req.query);
+    // CRITICAL FIX: Use defaultLimit=100 for cities endpoint to return all cities by default
+    const { page, limit } = parsePaginationParams(req.query, 100);
     const total = cities.length;
     const startIndex = (page - 1) * limit;
     const endIndex = startIndex + limit;
     const paginatedCities = cities.slice(startIndex, endIndex);
 
     // Final verification: compare with unified reference
+    // CRITICAL: Use full cities list (before pagination) for comparison
     try {
       const allUnifiedCities = getAllUnifiedCities();
       const unifiedCityNames = new Set(allUnifiedCities.map(c => c.name));
-      const returnedCityNames = new Set(cities);
+      const returnedCityNames = new Set(cities); // cities is full list before pagination
       
       const missingInResponse = Array.from(unifiedCityNames).filter(
         name => !returnedCityNames.has(name)
@@ -336,10 +387,10 @@ export async function getCities(req: Request, res: Response): Promise<void> {
       logger.warn('Failed to verify cities against unified reference', error as Error);
     }
 
-    const response = createPaginatedResponse(paginatedCities, total, page, limit);
+    const result = createPaginatedResponse(paginatedCities, total, page, limit);
 
-    res.json({
-      ...response,
+    const response = {
+      ...result,
       mode: 'database',
       quality: 100,
       source: 'PostgreSQL',
@@ -349,10 +400,26 @@ export async function getCities(req: Request, res: Response): Promise<void> {
         virtualStopsCount: virtualStops.length,
         totalStopsCount: realStops.length + virtualStops.length,
       },
-    });
-  } catch (error) {
-    logger.error('Failed to get cities', error as Error, {
+    };
+
+    // Cache the result
+    await cacheService.set(cacheKey, response, CACHE_TTL);
+
+    const duration = Date.now() - startTime;
+    logger.info('Cities list generated', {
       module: 'CitiesController',
+      duration: `${duration}ms`,
+      totalCities: cities.length,
+      realStopsCount: realStops.length,
+      virtualStopsCount: virtualStops.length,
+      cacheHit: false,
+    });
+
+    res.json(response);
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    logger.error('Failed to get cities', error as Error, {
+      duration: `${duration}ms`,
     });
 
     res.status(500).json({

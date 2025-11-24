@@ -228,7 +228,20 @@ export class ODataSyncWorker extends BaseBackgroundWorker {
       }
 
       // ====================================================================
-      // Step 8: Return Success
+      // Step 8: Invalidate cities cache
+      // ====================================================================
+      try {
+        const { RedisCacheService } = await import('../../infrastructure/cache/RedisCacheService');
+        const cacheService = new RedisCacheService();
+        await cacheService.deleteByPattern('cities:list:*');
+        this.log('INFO', 'Cities cache invalidated');
+      } catch (error: any) {
+        this.log('WARN', `Failed to invalidate cities cache: ${error?.message}`, error);
+        // Non-fatal error - continue
+      }
+
+      // ====================================================================
+      // Step 9: Return Success
       // ====================================================================
       this.lastHash = currentHash;
 

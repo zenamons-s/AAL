@@ -171,3 +171,4 @@ COMMENT ON TABLE stops IS 'After Migration 008: stops table contains only real s
 COMMENT ON SCHEMA public IS 'Extended cleanup of virtual stops from stops table - Migration 008';
 
 
+

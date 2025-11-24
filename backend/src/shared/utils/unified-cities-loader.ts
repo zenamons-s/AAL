@@ -11,6 +11,11 @@ import fs from 'fs';
 import path from 'path';
 import { normalizeCityName } from './city-normalizer';
 import { getAllYakutiaCities, type YakutiaCity } from './yakutia-cities-loader';
+import {
+  validateYakutiaCitiesReference,
+  validateFederalCitiesReference,
+  findDuplicateCities,
+} from './unified-cities-validator';
 
 /**
  * Unified city information
@@ -68,6 +73,26 @@ export function loadUnifiedCitiesReference(): Map<string, UnifiedCity> {
   try {
     // Load Yakutia cities
     const yakutiaCities = getAllYakutiaCities();
+    
+    // Validate Yakutia cities reference
+    const yakutiaValidation = validateYakutiaCitiesReference({
+      cities: yakutiaCities,
+    });
+    if (!yakutiaValidation.success) {
+      console.error(
+        `[UnifiedCitiesLoader] Validation error in Yakutia cities reference: ${yakutiaValidation.error}`
+      );
+      throw new Error(`Invalid Yakutia cities reference: ${yakutiaValidation.error}`);
+    }
+    
+    // Check for duplicates
+    const duplicates = findDuplicateCities(yakutiaCities);
+    if (duplicates.length > 0) {
+      console.warn(
+        `[UnifiedCitiesLoader] Found duplicate cities in Yakutia reference: ${duplicates.join(', ')}`
+      );
+    }
+    
     for (const city of yakutiaCities) {
       const normalizedKey = normalizeCityName(city.normalizedName || city.name);
       citiesMap.set(normalizedKey, {
@@ -91,6 +116,23 @@ export function loadUnifiedCitiesReference(): Map<string, UnifiedCity> {
     if (fs.existsSync(federalCitiesPath)) {
       const fileContent = fs.readFileSync(federalCitiesPath, 'utf-8');
       const reference: FederalCitiesReference = JSON.parse(fileContent);
+      
+      // Validate federal cities reference
+      const federalValidation = validateFederalCitiesReference(reference);
+      if (!federalValidation.success) {
+        console.error(
+          `[UnifiedCitiesLoader] Validation error in federal cities reference: ${federalValidation.error}`
+        );
+        throw new Error(`Invalid federal cities reference: ${federalValidation.error}`);
+      }
+      
+      // Check for duplicates
+      const duplicates = findDuplicateCities(reference.cities);
+      if (duplicates.length > 0) {
+        console.warn(
+          `[UnifiedCitiesLoader] Found duplicate cities in federal reference: ${duplicates.join(', ')}`
+        );
+      }
 
       for (const city of reference.cities) {
         const normalizedKey = normalizeCityName(city.normalizedName || city.name);
@@ -118,13 +160,24 @@ export function loadUnifiedCitiesReference(): Map<string, UnifiedCity> {
     console.log(
       `[UnifiedCitiesLoader] Loaded ${citiesMap.size} cities from unified reference (${yakutiaCities.length} Yakutia, ${citiesMap.size - yakutiaCities.length} federal)`
     );
+    
+    // CRITICAL: Only cache if we successfully loaded cities
+    if (citiesMap.size > 0) {
+      unifiedCitiesCache = citiesMap;
+    } else {
+      console.error(
+        `[UnifiedCitiesLoader] WARNING: Unified cities reference is empty after loading. This should not happen.`
+      );
+      // Don't cache empty map - allow retry on next call
+    }
   } catch (error: any) {
     console.error(
       `[UnifiedCitiesLoader] Error loading unified cities reference: ${error?.message || String(error)}`
     );
+    // Don't cache on error - allow retry on next call
+    // Return empty map as fallback
   }
 
-  unifiedCitiesCache = citiesMap;
   return citiesMap;
 }
 
@@ -201,6 +254,7 @@ export function getUnifiedCitiesDirectory(): Record<
 
   return directory;
 }
+
 
 
 

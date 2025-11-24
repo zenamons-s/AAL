@@ -129,6 +129,30 @@
       "longitude": 129.6000,
       "isKeyCity": false,
       "description": "Пригород Якутска, паромная переправа"
+    },
+    {
+      "name": "Чурапча",
+      "normalizedName": "чурапча",
+      "latitude": 61.9983,
+      "longitude": 132.4333,
+      "isKeyCity": false,
+      "description": "Районный центр на реке Амга"
+    },
+    {
+      "name": "Амга",
+      "normalizedName": "амга",
+      "latitude": 60.9000,
+      "longitude": 131.9667,
+      "isKeyCity": false,
+      "description": "Районный центр на реке Амга"
+    },
+    {
+      "name": "Томмот",
+      "normalizedName": "томмот",
+      "latitude": 58.9564,
+      "longitude": 126.2925,
+      "isKeyCity": false,
+      "description": "Город на реке Алдан"
     }
   ],
   "notes": [

@@ -65,3 +65,4 @@ COMMENT ON COLUMN virtual_routes.id IS 'Virtual route identifier - extended to V
 COMMENT ON SCHEMA public IS 'Extended ID fields to VARCHAR(100) - Migration 006';
 
 
+

@@ -281,6 +281,19 @@ export class VirtualEntitiesGeneratorWorker extends BaseBackgroundWorker {
       // ====================================================================
       // Step 7: Return Success
       // ====================================================================
+      // ====================================================================
+      // Invalidate cities cache
+      // ====================================================================
+      try {
+        const { RedisCacheService } = await import('../../infrastructure/cache/RedisCacheService');
+        const cacheService = new RedisCacheService();
+        await cacheService.deleteByPattern('cities:list:*');
+        this.log('INFO', 'Cities cache invalidated');
+      } catch (error: any) {
+        this.log('WARN', `Failed to invalidate cities cache: ${error?.message}`, error);
+        // Non-fatal error - continue
+      }
+
       return {
         success: true,
         workerId: this.workerId,
