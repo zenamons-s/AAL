@@ -1,0 +1,248 @@
+'use client'
+
+import { useState, useMemo, useEffect } from 'react'
+import { CarRentalFilters, CarType } from '@/modules/transport/domain'
+import { carRentalsMock } from '@/modules/transport/lib'
+import { RentFilters } from './rent-filters'
+
+export function RentTab() {
+  const [city, setCity] = useState('')
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
+  const [carType, setCarType] = useState<CarType | ''>('')
+  const [isSearchActive, setIsSearchActive] = useState(false)
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [isContentAnimating, setIsContentAnimating] = useState(false)
+  const [filters, setFilters] = useState<CarRentalFilters>({
+    hasAirConditioning: false,
+  })
+
+  const today = new Date().toISOString().split('T')[0]
+  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+
+  const filteredCars = useMemo(() => {
+    if (!isSearchActive || !city.trim() || !startDate || !endDate) return []
+
+    let filtered = [...carRentalsMock]
+
+    // Фильтр по типу авто из формы
+    if (carType) {
+      filtered = filtered.filter((car) => car.carType === carType)
+    }
+
+    // Фильтры из панели фильтров
+    if (filters.driverAge !== undefined) {
+      // В реальном приложении здесь была бы проверка возраста водителя
+      // Для мок-данных просто пропускаем все
+    }
+
+    if (filters.carType) {
+      filtered = filtered.filter((car) => car.carType === filters.carType)
+    }
+
+    if (filters.transmission) {
+      filtered = filtered.filter((car) => car.transmission === filters.transmission)
+    }
+
+    if (filters.hasAirConditioning) {
+      filtered = filtered.filter((car) => car.hasAirConditioning === true)
+    }
+
+    if (filters.priceMin !== undefined) {
+      filtered = filtered.filter((car) => car.pricePerDay >= filters.priceMin!)
+    }
+
+    if (filters.priceMax !== undefined) {
+      filtered = filtered.filter((car) => car.pricePerDay <= filters.priceMax!)
+    }
+
+    return filtered
+  }, [isSearchActive, city, startDate, endDate, carType, filters])
+
+  useEffect(() => {
+    if (isSearchActive && city.trim() && startDate && endDate) {
+      setIsContentAnimating(true)
+      setTimeout(() => {
+        setIsContentAnimating(false)
+      }, 300)
+    }
+  }, [isSearchActive, city, startDate, endDate, carType, filters])
+
+  const handleSearch = () => {
+    if (city.trim() && startDate && endDate) {
+      setIsSearchActive(true)
+    }
+  }
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSearch()
+    }
+  }
+
+  const carTypes: CarType[] = ['Эконом', 'Комфорт', 'Бизнес', 'SUV']
+
+  return (
+    <div className="w-full">
+      {/* Форма поиска */}
+      <div className="card p-lg mb-lg">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-md">
+          <div className="space-y-xs">
+            <label htmlFor="rent-city" className="block text-xs font-normal text-secondary">
+              Город
+            </label>
+            <input
+              type="text"
+              id="rent-city"
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              onKeyPress={handleKeyPress}
+              placeholder="Город аренды"
+              className="input"
+            />
+          </div>
+
+          <div className="space-y-xs">
+            <label htmlFor="rent-start" className="block text-xs font-normal text-secondary">
+              Дата начала
+            </label>
+            <input
+              type="date"
+              id="rent-start"
+              value={startDate || today}
+              onChange={(e) => setStartDate(e.target.value)}
+              min={today}
+              className="input"
+            />
+          </div>
+
+          <div className="space-y-xs">
+            <label htmlFor="rent-end" className="block text-xs font-normal text-secondary">
+              Дата окончания
+            </label>
+            <input
+              type="date"
+              id="rent-end"
+              value={endDate || tomorrow}
+              onChange={(e) => setEndDate(e.target.value)}
+              min={startDate || tomorrow}
+              className="input"
+            />
+          </div>
+
+          <div className="space-y-xs">
+            <label htmlFor="rent-car-type" className="block text-xs font-normal text-secondary">
+              Тип авто
+            </label>
+            <select
+              id="rent-car-type"
+              value={carType}
+              onChange={(e) => setCarType(e.target.value as CarType | '')}
+              className="input"
+            >
+              <option value="">Все типы</option>
+              {carTypes.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-xs">
+            <div className="block text-xs font-normal opacity-0 text-secondary">
+              Поиск
+            </div>
+            <button
+              type="button"
+              onClick={handleSearch}
+              className="btn-primary w-full"
+            >
+              Найти авто
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Фильтры - показываем только если поиск активен */}
+      {isSearchActive && city.trim() && startDate && endDate && (
+        <div className="mb-md">
+          <RentFilters
+            filters={filters}
+            onFiltersChange={setFilters}
+            isOpen={filtersOpen}
+            onToggle={() => setFiltersOpen(!filtersOpen)}
+          />
+        </div>
+      )}
+
+      {/* Результаты поиска */}
+      {isSearchActive && city.trim() && startDate && endDate && (
+        <div
+          className={`space-y-4 transition-opacity-slow ${isContentAnimating ? 'opacity-0' : 'opacity-100'}`}
+        >
+          {filteredCars.length > 0 ? (
+            filteredCars.map((car) => (
+                <div key={car.id} className="card p-lg fade-in">
+                <div className="flex flex-col md:flex-row gap-md">
+                  <div className="w-full md:w-64 h-48 md:h-40 rounded-sm overflow-hidden flex-shrink-0">
+                    <div
+                      className="w-full h-full"
+                      style={{
+                        backgroundImage: car.imageUrl
+                          ? `url(${car.imageUrl})`
+                          : `linear-gradient(135deg, var(--color-background-subtle), var(--color-surface-hover))`,
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center',
+                      }}
+                    />
+                  </div>
+
+                  <div className="flex-1 flex flex-col">
+                    <div className="flex items-start justify-between mb-sm">
+                      <div>
+                        <h3 className="text-lg font-medium text-primary">
+                          {car.brand} {car.model}
+                        </h3>
+                        <span className="text-sm text-secondary">
+                          {car.carType}
+                        </span>
+                      </div>
+                      <span className="text-sm text-secondary">
+                        {car.transmission}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between mt-auto">
+                      <div>
+                        <span className="text-xl font-medium text-primary">
+                          {car.pricePerDay.toLocaleString('ru-RU')} ₽
+                        </span>
+                        <span className="text-sm text-secondary">
+                          / сутки
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn-primary"
+                      >
+                        Забронировать
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="card p-lg text-center fade-in">
+              <p className="text-md text-secondary">
+                Автомобили не найдены
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+

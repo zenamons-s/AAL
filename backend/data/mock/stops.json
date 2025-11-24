@@ -1,0 +1,317 @@
+[
+  {
+    "id": "stop-001",
+    "name": "Аэропорт Якутск (Туймаада)",
+    "coordinates": {
+      "latitude": 62.0933,
+      "longitude": 129.7706
+    },
+    "type": "airport"
+  },
+  {
+    "id": "stop-002",
+    "name": "Аэропорт Москва Шереметьево",
+    "coordinates": {
+      "latitude": 55.9726,
+      "longitude": 37.4146
+    },
+    "type": "airport"
+  },
+  {
+    "id": "stop-003",
+    "name": "Аэропорт Иркутск",
+    "coordinates": {
+      "latitude": 52.2680,
+      "longitude": 104.3889
+    },
+    "type": "airport"
+  },
+  {
+    "id": "stop-004",
+    "name": "Остановка Беркакит",
+    "coordinates": {
+      "latitude": 56.8167,
+      "longitude": 121.6500
+    },
+    "type": "bus_stop"
+  },
+  {
+    "id": "stop-005",
+    "name": "Аэропорт Мирный",
+    "coordinates": {
+      "latitude": 62.5347,
+      "longitude": 114.0389
+    },
+    "type": "airport"
+  },
+  {
+    "id": "stop-006",
+    "name": "Вокзал Новосибирск-Главный",
+    "coordinates": {
+      "latitude": 55.0415,
+      "longitude": 82.9346
+    },
+    "type": "train_station"
+  },
+  {
+    "id": "stop-007",
+    "name": "Автостанция Хандыга",
+    "coordinates": {
+      "latitude": 62.6542,
+      "longitude": 135.5900
+    },
+    "type": "bus_station"
+  },
+  {
+    "id": "stop-008",
+    "name": "Вокзал Санкт-Петербург Московский",
+    "coordinates": {
+      "latitude": 59.9343,
+      "longitude": 30.3351
+    },
+    "type": "train_station"
+  },
+  {
+    "id": "stop-009",
+    "name": "Аэропорт Нерюнгри",
+    "coordinates": {
+      "latitude": 56.9139,
+      "longitude": 124.9142
+    },
+    "type": "airport"
+  },
+  {
+    "id": "stop-010",
+    "name": "Вокзал Красноярск-Пассажирский",
+    "coordinates": {
+      "latitude": 56.0089,
+      "longitude": 92.8537
+    },
+    "type": "train_station"
+  },
+  {
+    "id": "stop-011",
+    "name": "Автостанция Центральная Якутск",
+    "coordinates": {
+      "latitude": 62.0355,
+      "longitude": 129.6755
+    },
+    "type": "bus_station"
+  },
+  {
+    "id": "stop-012",
+    "name": "Вокзал Иркутск-Пассажирский",
+    "coordinates": {
+      "latitude": 52.2812,
+      "longitude": 104.2661
+    },
+    "type": "train_station"
+  },
+  {
+    "id": "stop-013",
+    "name": "Автостанция Олёкминск",
+    "coordinates": {
+      "latitude": 60.3744,
+      "longitude": 120.4272
+    },
+    "type": "bus_station"
+  },
+  {
+    "id": "stop-014",
+    "name": "Аэропорт Ленск",
+    "coordinates": {
+      "latitude": 60.7167,
+      "longitude": 114.9167
+    },
+    "type": "airport"
+  },
+  {
+    "id": "stop-015",
+    "name": "Автостанция Ленск",
+    "coordinates": {
+      "latitude": 60.7167,
+      "longitude": 114.9167
+    },
+    "type": "bus_station"
+  },
+  {
+    "id": "stop-016",
+    "name": "Аэропорт Вилюйск",
+    "coordinates": {
+      "latitude": 63.7553,
+      "longitude": 121.6244
+    },
+    "type": "airport"
+  },
+  {
+    "id": "stop-017",
+    "name": "Автостанция Вилюйск",
+    "coordinates": {
+      "latitude": 63.7553,
+      "longitude": 121.6244
+    },
+    "type": "bus_station"
+  },
+  {
+    "id": "stop-018",
+    "name": "Аэропорт Тикси",
+    "coordinates": {
+      "latitude": 71.6333,
+      "longitude": 128.8667
+    },
+    "type": "airport"
+  },
+  {
+    "id": "stop-019",
+    "name": "Порт Тикси",
+    "coordinates": {
+      "latitude": 71.6333,
+      "longitude": 128.8667
+    },
+    "type": "bus_station"
+  },
+  {
+    "id": "stop-020",
+    "name": "Автостанция Алдан",
+    "coordinates": {
+      "latitude": 58.6000,
+      "longitude": 125.4000
+    },
+    "type": "bus_station"
+  },
+  {
+    "id": "stop-021",
+    "name": "Аэропорт Покровск",
+    "coordinates": {
+      "latitude": 61.4833,
+      "longitude": 129.1500
+    },
+    "type": "airport"
+  },
+  {
+    "id": "stop-022",
+    "name": "Автостанция Удачный",
+    "coordinates": {
+      "latitude": 66.4167,
+      "longitude": 112.4000
+    },
+    "type": "bus_station"
+  },
+  {
+    "id": "stop-023",
+    "name": "Аэропорт Верхоянск",
+    "coordinates": {
+      "latitude": 67.5500,
+      "longitude": 133.3833
+    },
+    "type": "airport"
+  },
+  {
+    "id": "stop-024",
+    "name": "Автостанция Жиганск",
+    "coordinates": {
+      "latitude": 66.7667,
+      "longitude": 123.4000
+    },
+    "type": "bus_station"
+  },
+  {
+    "id": "stop-025",
+    "name": "Аэропорт Среднеколымск",
+    "coordinates": {
+      "latitude": 67.4500,
+      "longitude": 153.7000
+    },
+    "type": "airport"
+  },
+  {
+    "id": "stop-026",
+    "name": "Аэропорт Чокурдах",
+    "coordinates": {
+      "latitude": 70.6167,
+      "longitude": 147.9000
+    },
+    "type": "airport"
+  },
+  {
+    "id": "stop-027",
+    "name": "Паромная переправа Нижний Бестях",
+    "coordinates": {
+      "latitude": 61.9500,
+      "longitude": 129.6000
+    },
+    "type": "ferry_terminal"
+  },
+  {
+    "id": "stop-028",
+    "name": "Пристань Якутск",
+    "coordinates": {
+      "latitude": 62.0278,
+      "longitude": 129.7042
+    },
+    "type": "ferry_terminal"
+  },
+  {
+    "id": "stop-030",
+    "name": "Аэропорт Новосибирск Толмачёво",
+    "coordinates": {
+      "latitude": 55.0084,
+      "longitude": 82.9357
+    },
+    "type": "airport"
+  },
+  {
+    "id": "stop-031",
+    "name": "Аэропорт Красноярск Емельяново",
+    "coordinates": {
+      "latitude": 56.0089,
+      "longitude": 92.8537
+    },
+    "type": "airport"
+  },
+  {
+    "id": "stop-032",
+    "name": "Аэропорт Хабаровск",
+    "coordinates": {
+      "latitude": 48.4802,
+      "longitude": 135.0719
+    },
+    "type": "airport"
+  },
+  {
+    "id": "stop-033",
+    "name": "Аэропорт Владивосток",
+    "coordinates": {
+      "latitude": 43.1155,
+      "longitude": 131.8855
+    },
+    "type": "airport"
+  },
+  {
+    "id": "stop-034",
+    "name": "Аэропорт Екатеринбург Кольцово",
+    "coordinates": {
+      "latitude": 56.8431,
+      "longitude": 60.6454
+    },
+    "type": "airport"
+  },
+  {
+    "id": "stop-035",
+    "name": "Аэропорт Казань",
+    "coordinates": {
+      "latitude": 55.8304,
+      "longitude": 49.0661
+    },
+    "type": "airport"
+  },
+  {
+    "id": "stop-036",
+    "name": "Аэропорт Нижний Новгород Стригино",
+    "coordinates": {
+      "latitude": 56.2965,
+      "longitude": 43.9361
+    },
+    "type": "airport"
+  }
+]

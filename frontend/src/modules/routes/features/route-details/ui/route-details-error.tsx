@@ -1,0 +1,51 @@
+'use client';
+
+interface RouteDetailsErrorProps {
+  error: string;
+}
+
+export function RouteDetailsError({ error }: RouteDetailsErrorProps) {
+  const getErrorMessage = (error: string) => {
+    if (error.includes('не найдены') || error.includes('NOT_FOUND')) {
+      return {
+        title: 'Маршруты не найдены',
+        message: 'К сожалению, не удалось найти маршруты по указанным параметрам. Попробуйте изменить дату или пункты отправления/назначения.',
+      };
+    }
+    if (error.includes('Нет рейсов') || error.includes('нет доступных')) {
+      return {
+        title: 'Нет доступных рейсов',
+        message: 'На выбранную дату нет доступных рейсов. Попробуйте выбрать другую дату.',
+      };
+    }
+    if (error.includes('Нет соединений')) {
+      return {
+        title: 'Нет соединений',
+        message: 'Между указанными пунктами нет прямых или транзитных соединений.',
+      };
+    }
+    return {
+      title: 'Произошла ошибка',
+      message: error,
+    };
+  };
+
+  const { title, message } = getErrorMessage(error);
+
+  return (
+    <div className="card p-lg text-center">
+      <div className="text-4xl mb-md">⚠️</div>
+      <h2 className="text-xl font-medium mb-md text-heading">
+        {title}
+      </h2>
+      <p className="text-secondary mb-lg">{message}</p>
+      <button
+        onClick={() => window.history.back()}
+        className="btn-primary"
+      >
+        Вернуться назад
+      </button>
+    </div>
+  );
+}
+

@@ -1,0 +1,140 @@
+'use client'
+
+import { HotelFilters } from '@/modules/hotels/domain'
+
+interface HotelsFiltersProps {
+  filters: HotelFilters
+  onFiltersChange: (filters: HotelFilters) => void
+  isOpen: boolean
+  onToggle: () => void
+}
+
+export function HotelsFilters({ filters, onFiltersChange, isOpen, onToggle }: HotelsFiltersProps) {
+  const handleFilterChange = (key: keyof HotelFilters, value: boolean | number | undefined) => {
+    onFiltersChange({
+      ...filters,
+      [key]: value,
+    })
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-sm">
+        <button
+          type="button"
+          onClick={onToggle}
+          className={`px-xl py-sm rounded-sm font-medium text-sm border transition-fast ${
+            isOpen 
+              ? 'btn-primary border-primary' 
+              : 'bg-input-bg text-secondary border-divider hover:bg-surface-hover'
+          }`}
+        >
+          Фильтр {isOpen ? '▼' : '▶'}
+        </button>
+      </div>
+
+      {isOpen && (
+        <div className="card p-lg fade-in">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-md">
+            {/* Ближе к центру */}
+            <label className="flex items-center space-x-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={filters.closeToCenter}
+                onChange={(e) => handleFilterChange('closeToCenter', e.target.checked)}
+                className="w-5 h-5 rounded cursor-pointer"
+                style={{
+                  accentColor: 'var(--color-primary)',
+                }}
+              />
+              <span className="text-sm text-primary">
+                Ближе к центру
+              </span>
+            </label>
+
+            {/* Отели с завтраком */}
+            <label className="flex items-center space-x-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={filters.hasBreakfast}
+                onChange={(e) => handleFilterChange('hasBreakfast', e.target.checked)}
+                className="w-5 h-5 rounded cursor-pointer"
+                style={{
+                  accentColor: 'var(--color-primary)',
+                }}
+              />
+              <span className="text-sm text-primary">
+                С завтраком
+              </span>
+            </label>
+
+            {/* Парковка */}
+            <label className="flex items-center space-x-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={filters.hasParking}
+                onChange={(e) => handleFilterChange('hasParking', e.target.checked)}
+                className="w-5 h-5 rounded cursor-pointer"
+                style={{
+                  accentColor: 'var(--color-primary)',
+                }}
+              />
+              <span className="text-sm text-primary">
+                Парковка
+              </span>
+            </label>
+
+            {/* Высокий рейтинг */}
+            <label className="flex items-center space-x-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={filters.highRating}
+                onChange={(e) => handleFilterChange('highRating', e.target.checked)}
+                className="w-5 h-5 rounded cursor-pointer"
+                style={{
+                  accentColor: 'var(--color-primary)',
+                }}
+              />
+              <span className="text-sm text-primary">
+                Высокий рейтинг (4.5+)
+              </span>
+            </label>
+
+            {/* Цена от */}
+            <div className="space-y-sm">
+              <label htmlFor="price-min" className="block text-xs font-normal text-secondary">
+                Цена от (₽)
+              </label>
+              <input
+                type="number"
+                id="price-min"
+                value={filters.priceMin || ''}
+                onChange={(e) => handleFilterChange('priceMin', e.target.value ? parseInt(e.target.value) : undefined)}
+                placeholder="0"
+                min="0"
+              className="input"
+              />
+            </div>
+
+            {/* Цена до */}
+            <div className="space-y-sm">
+              <label htmlFor="price-max" className="block text-xs font-normal text-secondary">
+                Цена до (₽)
+              </label>
+              <input
+                type="number"
+                id="price-max"
+                value={filters.priceMax || ''}
+                onChange={(e) => handleFilterChange('priceMax', e.target.value ? parseInt(e.target.value) : undefined)}
+                placeholder="100000"
+                min="0"
+              className="input"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
